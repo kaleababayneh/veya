@@ -26,6 +26,7 @@ const TR: Record<string, string> = {
   "Your wallet will ask for a signature first (no transaction, no fee): it proves this reservation is yours before the prover spends GPU time.":
     "Cüzdanınız önce bir imza isteyecek (işlem yok, ücret yok): kanıtlayıcı GPU zamanı harcamadan önce rezervasyonun size ait olduğunu gösterir.",
   "Claim your": "Alın:",
+  "Claim the bond:": "Teminatı alın:",
   "Claim": "Al",
   "Send": "Gönderin:",
   "by FAST, then declare it": "FAST ile, sonra beyan edin",

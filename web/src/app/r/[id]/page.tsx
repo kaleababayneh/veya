@@ -494,7 +494,7 @@ function BuyerFlow({
       </StepCard>
 
       {/* 4 · claim */}
-      <StepCard n={4} title={bond ? `Claim the bond: ${prize}` : `${tr("Claim your")} ${prize}`} state={s4}>
+      <StepCard n={4} title={bond ? `${tr("Claim the bond:")} ${prize}` : `${tr("Claim your")} ${prize}`} state={s4}>
         {proved && (
           <>
             <p className="text-sm text-muted">The proof ({(job!.proof!.length - 2) / 2} bytes) is verified by the Soroban verifier contract inside the same transaction that pays you.</p>
