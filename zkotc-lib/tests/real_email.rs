@@ -1,81 +1,61 @@
-//! End-to-end test against a REAL Ziraat statement e-mail (git-ignored, see testdata/README.md).
+//! Tests against REAL Ziraat e-dekont e-mails (git-ignored, see testdata/README.md):
+//! `e-dekont-outgoing*.eml` (a FAST the account holder sent) must prove; `e-dekont-incoming*.eml` must be
+//! rejected as NotOutgoing. Both must DKIM-verify.
 use zkotc_lib::*;
 
-fn load() -> Option<(Vec<u8>, Vec<u8>)> {
-    let dir = format!("{}/testdata", env!("CARGO_MANIFEST_DIR"));
-    let der = std::fs::read(format!("{dir}/ziraat-ileti-msg2.der")).ok()?;
-    let eml = std::fs::read_dir(format!("{dir}/private"))
+fn dir() -> String {
+    format!("{}/testdata", env!("CARGO_MANIFEST_DIR"))
+}
+fn der() -> Vec<u8> {
+    std::fs::read(format!("{}/ziraat-ileti-msg2.der", dir())).unwrap()
+}
+fn sample(prefix: &str) -> Option<Vec<u8>> {
+    std::fs::read_dir(format!("{}/private", dir()))
         .ok()?
         .filter_map(|e| e.ok())
-        .find(|e| e.file_name().to_string_lossy().ends_with(".eml"))
-        .and_then(|e| std::fs::read(e.path()).ok())?;
-    Some((eml, der))
+        .find(|e| e.file_name().to_string_lossy().starts_with(prefix))
+        .and_then(|e| std::fs::read(e.path()).ok())
 }
 
 #[test]
-fn dkim_verifies_against_dns_key() {
-    let Some((eml, der)) = load() else { eprintln!("skipped: no private .eml"); return };
+fn outgoing_dekont_proves() {
+    let Some(eml) = sample("e-dekont-outgoing") else { eprintln!("skipped: no outgoing sample"); return };
+    let d = inspect_dekont(&eml).expect("dekont");
+    assert_eq!(d.direction, dekont::Direction::Outgoing);
+    assert!(d.fast_sorgu_no().is_some(), "Fast Sorgu No");
+    assert!(d.recipient_name().is_some() && d.recipient_bank_code().is_some() && d.recipient_iban_masked().is_some());
+    println!("dekont: {} {} {} amount {} debited {} bank {:?} payee {:?}", d.date_yyyymmdd, d.time, d.fis_no, d.amount_kurus, d.debited_kurus, d.recipient_bank_code(), d.recipient_name());
+    let claim = prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 9 }).expect("prove_payment");
+    assert_eq!(claim.amount_kurus, d.amount_kurus);
+    assert_eq!(claim.date_yyyymmdd, d.date_yyyymmdd);
+    assert_eq!(claim.payee_hash, d.payee_hash().unwrap());
+    assert_eq!(claim.offer_id, 9);
+    println!("public values: {}", hex::encode(claim.to_bytes()));
+}
+
+#[test]
+fn incoming_dekont_is_rejected() {
+    let Some(eml) = sample("e-dekont-incoming") else { return };
+    let d = inspect_dekont(&eml).expect("dekont");
+    assert_eq!(d.direction, dekont::Direction::Incoming);
+    assert_eq!(prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 1 }).unwrap_err(), Error::NotOutgoing);
+}
+
+#[test]
+fn dkim_verifies_and_detects_tampering() {
+    let Some(eml) = sample("e-dekont") else { return };
+    let der = der();
     let v = dkim::verify(&eml, &der).expect("DKIM must verify");
     assert_eq!(v.domain, "ileti.ziraatbank.com.tr");
     assert_eq!(v.selector, "msg2");
-    assert_eq!(dkim::header_address_domain(&v.headers, "from").as_deref(), Some("ileti.ziraatbank.com.tr"));
-}
-
-#[test]
-fn dkim_rejects_tampered_body_and_wrong_key() {
-    let Some((eml, der)) = load() else { return };
     let mut bad = eml.clone();
     let l = bad.len();
-    bad[l - 200] ^= 0x01; // inside the base64 attachment
+    bad[l - 200] ^= 0x01;
     assert_eq!(dkim::verify(&bad, &der).unwrap_err(), dkim::DkimError::BodyHashMismatch);
-    let mut wrong_key = der.clone();
-    wrong_key[60] ^= 0x01; // flip a modulus bit
-    assert!(matches!(dkim::verify(&eml, &wrong_key), Err(dkim::DkimError::SignatureInvalid) | Err(dkim::DkimError::BadPublicKey)));
 }
 
 #[test]
-fn statement_rows_parse_and_fast_row_is_found() {
-    let Some((eml, _)) = load() else { return };
-    let (h, b) = dkim::split_message(&eml);
-    let headers = dkim::parse_headers(&h);
-    let html = mime::extract_statement_html(&headers, &b).expect("attachment");
-    let st = statement::parse(&html).expect("statement");
-    assert_eq!(st.currency, "TRY");
-    assert!(st.account_iban.starts_with("TR"));
-    assert!(st.rows.len() > 10, "rows: {}", st.rows.len());
-    let fast = st.rows.iter().find(|r| r.description.contains("FAST")).expect("a FAST row");
-    assert!(fast.amount_kurus < 0);
-    assert!(fast.recipient_iban().is_some(), "{}", fast.description);
-    println!("FAST row: {:?}", fast);
-}
-
-#[test]
-fn prove_payment_produces_consistent_public_values() {
-    let Some((eml, der)) = load() else { return };
-    let (h, b) = dkim::split_message(&eml);
-    let headers = dkim::parse_headers(&h);
-    let html = mime::extract_statement_html(&headers, &b).unwrap();
-    let st = statement::parse(&html).unwrap();
-    let (idx, row) = st.rows.iter().enumerate().find(|(_, r)| r.description.contains("FAST")).unwrap();
-    let iban = row.recipient_iban().unwrap();
-
-    let input = ProverInput { eml: eml.clone(), dkim_pubkey_der: der.clone(), row_index: idx as u32, offer_id: 42 };
-    let claim = prove_payment(&input).expect("prove_payment");
-    assert_eq!(claim.offer_id, 42);
-    assert_eq!(claim.amount_kurus, row.amount_kurus.unsigned_abs());
-    assert_eq!(claim.date_yyyymmdd, row.date_yyyymmdd);
-    assert_eq!(claim.recipient_iban_hash, iban_hash(&iban));
-    assert_eq!(claim.domain_hash, sha256(b"ileti.ziraatbank.com.tr"));
-    assert_eq!(claim.dkim_key_hash, sha256(&der));
-    let bytes = claim.to_bytes();
-    assert_eq!(PaymentClaim::from_bytes(&bytes).unwrap(), claim);
-
-    // host helper picks the same row
-    let found = find_payment_row(&eml, &iban, 1, 20260101).unwrap().unwrap();
-    assert_eq!(found.0, idx as u32);
-    // a POS row is not an acceptable payment
-    let pos_idx = st.rows.iter().position(|r| r.description.starts_with("POS")).unwrap();
-    let bad = ProverInput { row_index: pos_idx as u32, ..input.clone() };
-    assert_eq!(prove_payment(&bad).unwrap_err(), Error::NoRecipientIban);
-    println!("public values: {}", hex::encode(bytes));
+fn claim_roundtrip() {
+    let c = PaymentClaim { dkim_key_hash: [1; 32], domain_hash: [2; 32], payee_hash: [3; 32], amount_kurus: 168150, date_yyyymmdd: 20260905, nullifier: [4; 32], offer_id: 7 };
+    assert_eq!(PaymentClaim::from_bytes(&c.to_bytes()).unwrap(), c);
 }

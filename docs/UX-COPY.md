@@ -13,7 +13,7 @@ Voice: plain, specific, no crypto jargon where a bank word exists. English prima
 | Element | Copy |
 |---|---|
 | H1 | Buy XLM or USDC with a Turkish bank transfer. No middleman. |
-| Sub | Sellers escrow crypto on Stellar. You pay them in TRY with a normal FAST transfer, then prove the payment from your own Ziraat statement e-mail with a zero-knowledge proof. The escrow releases automatically. |
+| Sub | Sellers escrow crypto on Stellar. You pay them in TRY with a normal FAST transfer, then prove the payment from Ziraat's own e-dekont e-mail with a zero-knowledge proof. The escrow releases automatically. |
 | Trust box | • Funds sit in a Soroban escrow contract, never with us. • Evidence is the bank's DKIM-signed e-mail, verified inside the RISC Zero zkVM. • The Groth16 proof is checked on-chain with native BN254 pairing. |
 | Filter | Available · All |
 | Empty | No offers yet — Be the first: create an offer. |
@@ -34,17 +34,17 @@ Voice: plain, specific, no crypto jargon where a bank word exists. English prima
 - CTA: **Deposit 100 USDC and publish offer** / Connect wallet to continue.
 
 ## Offer page — buyer, Open
-- H2: Buy this offer. Steps: 1) Reserve the offer (a Stellar transaction, no funds move). You get 60 minutes. 2) Send exactly ₺X by FAST from your **Ziraat** account to the seller's IBAN. 3) Ask Ziraat to e-mail your statement, upload the .eml here, and claim N TOKEN.
-- CTA: **Reserve offer**. Footnote: You must pay from a Ziraat Bankası TRY account: the proof is built from Ziraat's DKIM-signed statement e-mail. Fee 0.25% is deducted from the crypto you receive.
+- H2: Buy this offer. Steps: 1) Reserve the offer (a Stellar transaction, no funds move). You get 60 minutes. 2) Send exactly ₺X by FAST from your **Ziraat** account to the seller's IBAN. 3) Have Ziraat e-mail you the transfer's dekont, upload the .eml here, and claim N TOKEN.
+- CTA: **Reserve offer**. Footnote: You must pay from a Ziraat Bankası TRY account: the proof is built from Ziraat's DKIM-signed e-dekont e-mail for the transfer. Fee 0.25% is deducted from the crypto you receive.
 
-## Offer page — buyer, Reserved by me (stepper: Pay by FAST → Get statement e-mail → Generate proof → Claim crypto)
+## Offer page — buyer, Reserved by me (stepper: Pay by FAST → Get e-dekont e-mail → Generate proof → Claim crypto)
 | Step | Copy |
 |---|---|
 | 1 | **Send the bank transfer** — Alıcı IBAN · Alıcı adı · Tutar · Transfer type: FAST (instant) from your Ziraat TRY account. Checkbox: I have sent exactly ₺X to this IBAN. |
 | 1 guard (< 15 min left) | Less than 15 minutes remain on your reservation. Do **not** send money now: release the reservation and reserve again to get a fresh timer. |
-| 2 | **Get your statement e-mail from Ziraat** — Ziraat Mobil / İnternet Şubesi → **Hesaplarım** → your TRY account → **Hesap Hareketleri** → choose today's range → **E-posta Gönder** (arrives within ~2 min from ziraat@ileti.ziraatbank.com.tr). In Gmail: ⋮ → **Show original** → **Download original** (.eml). Do not forward it; forwarding breaks the signature. |
-| 3 | **Generate the zero-knowledge proof** — file input (.eml). Consent: I understand the whole e-mail (my 30-day statement) is sent to the prover at <url> (mode, DKIM key source), kept only in memory while the proof is generated, and that only hashes, the amount, the date and a nullifier go on-chain. CTA: Verify e-mail and start proving. |
-| 3 progress | Queued — Waiting for the prover. · Checking e-mail — DKIM signature, statement attachment and payment row are verified. · Generating proof — RISC Zero zkVM run → Groth16 proof over BN254 (2–10 min). · Proof ready — Submit it to the escrow contract to receive your crypto. Row line: Matched statement row: 07.09.2026 · F23213 · ₺4.000,00 · <masked description>. |
+| 2 | **Get the e-dekont e-mail for this transfer** — Ziraat Mobil / İnternet Şubesi → **Hesap Hareketleri** → open the FAST you sent → **Dekont Gönder** → **E-posta** (subject `e-dekont`, arrives within ~2 min). In Gmail: ⋮ → **Show original** → **Download original** (.eml). Do not forward it; forwarding breaks the signature. |
+| 3 | **Generate the zero-knowledge proof** — file input (.eml). Consent: I understand the e-mail (the dekont of this one transfer) is sent to the prover at <url> (mode, DKIM key source), kept only in memory while the proof is generated, and that only hashes, the amount, the date and a nullifier go on-chain. CTA: Verify e-mail and start proving. |
+| 3 progress | Queued — Waiting for the prover. · Checking e-mail — DKIM signature, e-dekont attachment and transfer details are verified. · Generating proof — RISC Zero zkVM run → Groth16 proof over BN254 (2–10 min). · Proof ready — Submit it to the escrow contract to receive your crypto. Row line: Dekont: 07.09.2026 18:21:03 · F05247 · ₺4.000,00 · <masked description>. |
 | 4 | **Claim your crypto** — The proof (356 bytes) will be verified by the Soroban verifier contract inside the same transaction that pays you. CTA: Claim 99.75 USDC. |
 | Timer ended banner | Your reservation timer ended. You can still claim as long as nobody releases the reservation, so finish the proof now. |
 | Footer | Changed your mind and have **not** paid? Release the reservation. |
@@ -68,8 +68,8 @@ Voice: plain, specific, no crypto jargon where a bank word exists. English prima
 | 11 | InvalidPublicValues | The proof output is malformed. Regenerate the proof. |
 | 12 | DkimKeyNotTrusted | The e-mail was signed with a DKIM key this contract does not trust yet. |
 | 13 | DomainMismatch | The e-mail was not signed by ileti.ziraatbank.com.tr. |
-| 14 | IbanMismatch | The payment in your statement went to a different IBAN than the seller's. |
-| 15 | AmountTooLow | The payment in your statement is smaller than the offer amount. |
+| 14 | IbanMismatch | The dekont's recipient IBAN is not the seller's IBAN. |
+| 15 | AmountTooLow | The transfer in the dekont is smaller than the offer amount. |
 | 16 | DateOutOfWindow | The payment date is before you reserved this offer (Istanbul calendar day). |
 | 17 | NullifierUsed | This bank transfer was already used to settle another offer. |
 | 18 | ProofInvalid | The zero-knowledge proof did not verify on-chain. |
@@ -84,7 +84,9 @@ Voice: plain, specific, no crypto jargon where a bank word exists. English prima
 
 ## Prover errors (HTTP 400 text shown verbatim under the upload)
 - `dkim key: …` → We could not fetch the bank's DKIM key.
-- `no outgoing transfer of at least X kuruş to TR… found` → This statement has no FAST/EFT transfer to the seller's IBAN for at least the offer amount on/after your reservation date.
+- `this dekont is an incoming transfer` → Upload the dekont of the transfer you *sent*, not one you received.
+- `the dekont's recipient IBAN does not match the seller's IBAN` / `does not show a recipient IBAN` → Wrong transfer, or a dekont type without the payee IBAN.
+- `transfer of X kuruş is below the offer amount` / `transfer dated D is before the reservation day` → Amount or date rule failed.
 - `verification failed: Dkim(BodyHashMismatch)` → The e-mail was modified after Ziraat sent it (forwarded or edited). Download the original .eml again.
 - `verification failed: Dkim(SignatureInvalid)` → The signature does not match Ziraat's key.
 - `verification failed: FromDomainMismatch` → The e-mail is not from Ziraat.

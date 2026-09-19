@@ -1,9 +1,10 @@
-//! Just enough MIME to pull the base64 statement attachment out of the signed body.
+//! Just enough MIME to pull the base64 HTML attachment (e-dekont.html) out of the signed body.
 
 use crate::dkim::{find, header_value, parse_headers, Header};
 use base64::Engine;
 
-pub fn extract_statement_html(headers: &[Header], body: &[u8]) -> Result<Vec<u8>, String> {
+/// The HTML attachment whose filename starts with `name_prefix` (falls back to the first HTML attachment).
+pub fn extract_html_attachment(headers: &[Header], body: &[u8], name_prefix: &str) -> Result<Vec<u8>, String> {
     let ct = header_value(headers, "Content-Type").ok_or("missing Content-Type")?;
     let boundary = param(&ct, "boundary").ok_or("missing multipart boundary")?;
     let delim = format!("--{boundary}");
@@ -16,7 +17,7 @@ pub fn extract_statement_html(headers: &[Header], body: &[u8]) -> Result<Vec<u8>
         let name = param(&pct, "name")
             .or_else(|| param(&disp, "filename"))
             .unwrap_or_default();
-        let is_statement = name.starts_with("Hesap_Hareketleri") && name.ends_with(".html");
+        let is_statement = name.starts_with(name_prefix) && name.ends_with(".html");
         let is_html_attachment = pct.to_ascii_lowercase().starts_with("text/html")
             && disp.to_ascii_lowercase().contains("attachment");
         if is_statement || (is_html_attachment && candidate.is_none()) {
@@ -30,7 +31,7 @@ pub fn extract_statement_html(headers: &[Header], body: &[u8]) -> Result<Vec<u8>
             candidate = Some(decoded);
         }
     }
-    candidate.ok_or_else(|| "no Hesap_Hareketleri_*.html attachment found".to_string())
+    candidate.ok_or_else(|| format!("no {name_prefix}*.html attachment found"))
 }
 
 /// Value of `;key=value` (optionally quoted) in a header like `Content-Type: a/b; name="x"`.

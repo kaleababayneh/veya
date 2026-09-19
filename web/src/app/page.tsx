@@ -37,8 +37,8 @@ export default function Home() {
         <div>
           <h1 className="text-4xl font-semibold tracking-tight">Buy XLM or USDC with a Turkish bank transfer. No middleman.</h1>
           <p className="mt-3 max-w-xl text-muted">
-            Sellers escrow crypto on Stellar. You pay them in TRY with a normal FAST transfer, then prove the payment from your own
-            Ziraat statement e-mail with a zero-knowledge proof. The escrow releases automatically.
+            Sellers escrow crypto on Stellar. You pay them in TRY with a normal FAST transfer, then prove the payment from Ziraat&apos;s own
+            e-dekont e-mail with a zero-knowledge proof. The escrow releases automatically.
           </p>
           <div className="mt-5 flex gap-3">
             <Link href="/offers/new">

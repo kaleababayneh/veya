@@ -32,7 +32,7 @@ sudo systemctl status caddy; sudo journalctl -u caddy -f
 Proving is two-phase: succinct STARK receipt (cached per job in `SUCCINCT_CACHE_DIR`, or `--succinct-cache` on the CLI) →
 Groth16 wrap in Docker. If the wrap fails, retry it without redoing the STARK: `zkotc wrap --succinct <file> --out proof.json`.
 
-**Measured on this 4-vCPU VM: the STARK phase of one 6.7M-cycle statement took ~1h45m (15:49→17:34 on 2026-09-08).**
+**Measured on this 4-vCPU VM: the STARK phase of one 6.7M-cycle proof (old statement guest) took ~1h45m (15:49→17:34 on 2026-09-08).**
 That is far too slow for users; the VM is fine as a build/verification box, but production proving needs a GPU host
 (`cargo build --release --features cuda`, NVIDIA CUDA 12; RISC Zero reports roughly a minute per proof of this size)
 or Boundless. Keep the VM's `zkotc-prover` for API testing only.

@@ -18,9 +18,9 @@ export default function HowItWorks() {
       </div>
       <ol className="space-y-5">
         <Step n={1} title="Seller escrows crypto on Soroban">XLM or USDC is transferred into the escrow contract together with the TRY price and the seller&apos;s IBAN.</Step>
-        <Step n={2} title="Buyer reserves and pays by FAST">The reservation is a Stellar transaction. The buyer sends the exact TRY amount from a Ziraat account. FAST settles in seconds.</Step>
-        <Step n={3} title="Ziraat e-mails the statement — DKIM-signed">Ziraat signs every e-mail with its DKIM key (RSA-SHA256, domain ileti.ziraatbank.com.tr). The statement attachment is inside the signed body, so it cannot be altered without breaking the signature.</Step>
-        <Step n={4} title="RISC Zero zkVM verifies the e-mail and extracts the payment">A Rust program checks the DKIM signature against the bank&apos;s public key, decodes the attachment, and reads the payment row: date, recipient IBAN, amount. It outputs only hashes, the amount, the date and a nullifier. The statement itself stays private.</Step>
+        <Step n={2} title="Buyer reserves and pays by FAST">The reservation is a Stellar transaction. The buyer sends the exact TRY amount from a Ziraat account and asks Ziraat to e-mail the dekont. FAST settles in seconds.</Step>
+        <Step n={3} title="Ziraat e-mails the transfer&apos;s dekont — DKIM-signed">Ziraat signs every e-mail with its DKIM key (RSA-SHA256, domain ileti.ziraatbank.com.tr). The e-dekont attachment is inside the signed body, so it cannot be altered without breaking the signature.</Step>
+        <Step n={4} title="RISC Zero zkVM verifies the e-mail and extracts the payment">A Rust program checks the DKIM signature against the bank&apos;s public key, decodes the e-dekont attachment, and reads the transfer: date, recipient IBAN, amount. It outputs only hashes, the amount, the date and a nullifier. The dekont itself stays private.</Step>
         <Step n={5} title="Groth16 proof verified on Stellar">The receipt is wrapped into a Groth16 proof over BN254. Soroban verifies it natively in the RISC Zero verifier router (Nethermind), the same verifier used by Stellar&apos;s Confidential Token preview, then the escrow checks IBAN hash, amount, date window and replay protection, and pays the buyer.</Step>
       </ol>
       <div className="rounded-2xl border border-line bg-panel p-5 text-sm">

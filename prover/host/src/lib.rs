@@ -41,7 +41,7 @@ pub struct ProofBundle {
 pub struct ClaimJson {
     pub dkim_key_hash: String,
     pub domain_hash: String,
-    pub recipient_iban_hash: String,
+    pub payee_hash: String,
     pub amount_kurus: u64,
     pub date_yyyymmdd: u64,
     pub nullifier: String,
@@ -53,7 +53,7 @@ impl From<&PaymentClaim> for ClaimJson {
         ClaimJson {
             dkim_key_hash: hex::encode(c.dkim_key_hash),
             domain_hash: hex::encode(c.domain_hash),
-            recipient_iban_hash: hex::encode(c.recipient_iban_hash),
+            payee_hash: hex::encode(c.payee_hash),
             amount_kurus: c.amount_kurus,
             date_yyyymmdd: c.date_yyyymmdd,
             nullifier: hex::encode(c.nullifier),
@@ -76,7 +76,7 @@ pub fn executor_env(input: &ProverInput) -> Result<ExecutorEnv<'static>> {
         .write_slice(&input.eml)
         .write(&(input.dkim_pubkey_der.len() as u32))?
         .write_slice(&input.dkim_pubkey_der)
-        .write(&(input.row_index, input.offer_id))?
+        .write(&input.offer_id)?
         .build()?)
 }
 
@@ -172,19 +172,42 @@ pub async fn resolve_dkim_der(eml: &[u8], dns: bool, pinned_der: Option<&[u8]>) 
     }
 }
 
-/// Build the guest input for the statement row paying `recipient_iban`.
+/// Validate the dekont on the host (same parser as the guest) and build the guest input.
+/// Fails fast with a precise message when the e-mail cannot settle this offer.
 pub fn build_input(
     eml: Vec<u8>,
     der: Vec<u8>,
     recipient_iban: &str,
+    recipient_name: &str,
     min_amount_kurus: u64,
     since_yyyymmdd: u64,
     offer_id: u64,
-) -> Result<(ProverInput, zkotc_lib::statement::Row)> {
-    let (idx, row) = zkotc_lib::find_payment_row(&eml, recipient_iban, min_amount_kurus, since_yyyymmdd)
-        .map_err(|e| anyhow!("statement: {e}"))?
-        .ok_or_else(|| anyhow!("no outgoing transfer of at least {min_amount_kurus} kuruş to {recipient_iban} on/after {since_yyyymmdd} found in this statement"))?;
-    Ok((ProverInput { eml, dkim_pubkey_der: der, row_index: idx, offer_id }, row))
+) -> Result<(ProverInput, zkotc_lib::dekont::Dekont)> {
+    let d = zkotc_lib::inspect_dekont(&eml).map_err(|e| anyhow!("dekont: {e}"))?;
+    if d.direction != zkotc_lib::dekont::Direction::Outgoing {
+        return Err(anyhow!("this dekont is an incoming transfer; upload the dekont of the transfer you sent"));
+    }
+    let want = zkotc_lib::payee::payee_hash_from_full(recipient_iban, recipient_name)
+        .ok_or_else(|| anyhow!("seller IBAN is not a valid Turkish IBAN"))?;
+    match d.payee_hash() {
+        None => return Err(anyhow!("the dekont does not show the recipient account, bank and name")),
+        Some(h) if h != want => {
+            return Err(anyhow!(
+                "the dekont's recipient ({} at bank {}, account {}) does not match the seller",
+                d.recipient_name().unwrap_or("?"),
+                d.recipient_bank_code().unwrap_or("?"),
+                d.recipient_iban_masked().unwrap_or("?")
+            ))
+        }
+        Some(_) => {}
+    }
+    if d.amount_kurus < min_amount_kurus {
+        return Err(anyhow!("transfer of {} kuruş is below the offer amount of {min_amount_kurus} kuruş", d.amount_kurus));
+    }
+    if d.date_yyyymmdd < since_yyyymmdd {
+        return Err(anyhow!("transfer dated {} is before the reservation day {since_yyyymmdd}", d.date_yyyymmdd));
+    }
+    Ok((ProverInput { eml, dkim_pubkey_der: der, offer_id }, d))
 }
 
 pub const PINNED_DER: &[u8] = include_bytes!("../../../zkotc-lib/testdata/ziraat-ileti-msg2.der");

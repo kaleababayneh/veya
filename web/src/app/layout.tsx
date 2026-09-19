@@ -5,7 +5,7 @@ import { Nav } from "@/components/Nav";
 
 export const metadata: Metadata = {
   title: "zkOTC — P2P TRY ⇄ XLM/USDC with proof of bank payment",
-  description: "Peer-to-peer OTC on Stellar. Sellers escrow crypto, buyers pay TRY by FAST and unlock it with a zero-knowledge proof of their Ziraat statement e-mail.",
+  description: "Peer-to-peer OTC on Stellar. Sellers escrow crypto, buyers pay TRY by FAST and unlock it with a zero-knowledge proof of Ziraat's e-dekont e-mail for the transfer.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

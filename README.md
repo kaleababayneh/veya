@@ -1,7 +1,7 @@
 # zkOTC — P2P TRY ⇄ XLM/USDC on Stellar with zero-knowledge proof of bank payment
 
 Sellers escrow XLM or USDC in a Soroban contract. Buyers pay TRY with a normal **FAST** bank transfer, ask
-**Ziraat Bankası** to e-mail their statement, and prove — in zero knowledge — that the bank's DKIM-signed e-mail
+**Ziraat Bankası** to e-mail the transfer's e-dekont, and prove — in zero knowledge — that the bank's DKIM-signed e-mail
 contains that payment. The proof (a RISC Zero Groth16 receipt) is verified on-chain by the RISC Zero verifier
 router — the same Nethermind-built verifier Stellar's Confidential Token preview uses — and the escrow releases.
 
@@ -14,15 +14,15 @@ buyer  ──lock──────────▶ │  (Soroban)     │◀─�
 buyer  ──fulfill(j,seal)▶└────────────────┘                          └──────────────────────────────┘
                               ▲  seal = 4-byte selector ‖ Groth16 (260 B), j = 152-byte journal
                               │
-        .eml ──▶ zkotc-server (RISC Zero zkVM: DKIM RSA-SHA256 → MIME → Ziraat statement row) ──▶ seal, journal
+        .eml ──▶ zkotc-server (RISC Zero zkVM: DKIM RSA-SHA256 → MIME → Ziraat e-dekont) ──▶ seal, journal
 ```
 
 ## Repository
 | Path | What | Status |
 |---|---|---|
 | `contracts/escrow` | Offer lifecycle, token custody, journal checks, nullifiers, fee, pause, upgrade; calls the RISC Zero router | 16 tests |
-| `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat statement parser, 152-byte journal | 6 tests incl. the real e-mail |
-| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x148bdb7a…5e2b`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | 6.7M cycles on a real statement |
+| `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat e-dekont parser, 152-byte journal | 8 tests incl. a real e-dekont e-mail |
+| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x4d8dc827…e384`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | ~3M cycles expected per e-dekont (to be measured on an outgoing sample) |
 | `contracts/risc0-verifier-deployment.toml` | testnet deployment of [NethermindEth/stellar-risc0-verifier](https://github.com/NethermindEth/stellar-risc0-verifier) (router, timelock, Groth16 verifier v3.0.0, emergency stop) | routed, selector `73c457ba` |
 | `web` | Next.js 16 app: offers, sell, reserve → pay → upload .eml → claim, wallet via Stellar Wallets Kit | `next build` clean |
 | `docs` | PRD, UX copy, demo script, QA checklist | |
@@ -59,7 +59,7 @@ cd web && cp .env.example .env.local && npm i && npm run dev                # ht
 
 ## Generating real proofs (the only step that needs hardware or credits)
 RISC Zero's Groth16 (STARK→SNARK) wrapper is **x86-only** (not Apple Silicon, not even in Docker). Options:
-1. **x86 Linux box** (16+ vCPU, ≥16 GB, optionally an NVIDIA GPU with `--features cuda`): `rzup install risc0-groth16`, then run `zkotc-server`. One statement ≈ 6.7M cycles: roughly 10–15 min on the 4-vCPU VM, well under a minute on a GPU, plus the Groth16 wrap.
+1. **x86 Linux box** (16+ vCPU, ≥16 GB, optionally an NVIDIA GPU with `--features cuda`): `rzup install risc0-groth16`, then run `zkotc-server`. One e-dekont proof is expected around 3M cycles (to be measured on an outgoing sample): the 4-vCPU VM took ~1h45m for a 6.7M-cycle guest, so use a GPU host (about a minute) for real users.
 2. **Boundless** (RISC Zero's proof market, Base mainnet, paid in ETH): request a Groth16 receipt with the `boundless-market` SDK and feed `seal`/`journal` to `fulfill`.
 On a Mac you can `execute` (exact journal, any machine) and, with `RISC0_DEV_MODE=1`, produce fake receipts for UI development — the router rejects them on-chain by design. Receipts must come from risc0 **3.0.x** (control root `a54dc85a…`), which is what the deployed verifier pins; a new RISC Zero major needs a new verifier version behind the router.
 
@@ -78,4 +78,4 @@ Escrow checks: router.verify(seal, image_id, sha256(journal)) · offer_id · DKI
 The first iteration used SP1 with our own Soroban Groth16 verifier (verified a real SP1 proof on-chain). It was replaced by RISC Zero for ecosystem alignment; that code lives at git tag `sp1-backend`.
 
 ## Trust & limits (v1)
-Only the bank can forge a DKIM signature (RSA-1024 key, pinned and rotatable). The prover sees the full statement; run your own or use TEE proving. Payer must bank with Ziraat. If a buyer pays after the 60-min lock ends and the seller releases the lock, the on-chain claim fails — the UI blocks payments with < 15 min left and warns sellers before releasing.
+Only the bank can forge a DKIM signature (RSA-1024 key, pinned and rotatable). The prover sees the dekont of that one transfer; run your own or use TEE proving. Payer must bank with Ziraat. If a buyer pays after the 60-min lock ends and the seller releases the lock, the on-chain claim fails — the UI blocks payments with < 15 min left and warns sellers before releasing.

@@ -11,6 +11,15 @@ web app deployed. Not yet done: one real Groth16 receipt through `fulfill`.
 | 0.3 | Pin `image_id` in the repo (`prover/IMAGE_ID`) + CI check; GitHub Actions for lib/contract tests, clippy, wasm + guest build, web lint/build | Guest changes silently invalidate the escrow config. |
 | 0.4 | Prover hardening: persistent job store (SQLite/Postgres), worker queue, auth token + rate limit on `POST /jobs`, metrics | Today jobs live in memory in one process. |
 
+## 0.5 Evidence v2: per-transaction e-dekont e-mail — DONE 2026-09-08 (statement path removed)
+Ziraat also e-mails a single-transaction dekont (`Subject: e-dekont`, attachment `e-dekont.html`, ~54 KB) from the same
+DKIM domain/key; verified on 2026-09-08 with an incoming FAST. For the buyer's *outgoing* FAST this would:
+- cut the guest's work roughly in half (body hash over 54 KB instead of 130 KB, one row instead of 118) and shrink proving time accordingly;
+- reveal one transaction to the prover instead of a month of statement history (privacy);
+- simplify the UI step ("Dekont Gönder → e-posta" on the transfer itself).
+Still needed: one real *outgoing*-FAST e-dekont e-mail to confirm the recipient IBAN is printed and to measure cycles; then
+consider having the buyer put `ZKOTC-<offer id>` in the transfer description for an extra binding.
+
 ## 1. Trust & safety (weeks 2–6)
 | # | Task |
 |---|---|

@@ -8,7 +8,7 @@
 //! ```text
 //! [  0.. 32] dkim_key_hash        sha256(DER SubjectPublicKeyInfo of the DKIM key)
 //! [ 32.. 64] domain_hash          sha256(dkim d= domain, e.g. "ileti.ziraatbank.com.tr")
-//! [ 64.. 96] recipient_iban_hash  sha256(IBAN, uppercase, no spaces) of the payee
+//! [ 64.. 96] payee_hash           sha256("zkotc/payee/v1" ‖ TRcc ‖ bank5 ‖ last6 ‖ folded name), see `payee_hash`
 //! [ 96..104] amount_kurus         u64, outgoing amount in kuruş (1 TRY = 100)
 //! [104..112] date_yyyymmdd        u64, statement date
 //! [112..144] nullifier            unique per statement row
@@ -54,7 +54,7 @@ pub enum Error {
     InvalidPublicValues = 11,
     DkimKeyNotTrusted = 12,
     DomainMismatch = 13,
-    IbanMismatch = 14,
+    PayeeMismatch = 14,
     AmountTooLow = 15,
     DateOutOfWindow = 16,
     NullifierUsed = 17,
@@ -90,7 +90,8 @@ pub struct Offer {
     pub try_amount_kurus: u64,
     /// payee IBAN shown to the buyer (normalized: uppercase, no spaces)
     pub seller_iban: String,
-    pub seller_iban_hash: BytesN<32>,
+    /// binding checked against the proof: check digits + bank code + last 6 digits + folded name
+    pub payee_hash: BytesN<32>,
     /// account holder name the buyer must type in the FAST transfer form
     pub seller_name: String,
     pub status: OfferStatus,
@@ -138,7 +139,7 @@ pub enum DataKey {
 pub struct PaymentClaim {
     pub dkim_key_hash: BytesN<32>,
     pub domain_hash: BytesN<32>,
-    pub recipient_iban_hash: BytesN<32>,
+    pub payee_hash: BytesN<32>,
     pub amount_kurus: u64,
     pub date_yyyymmdd: u64,
     pub nullifier: BytesN<32>,
@@ -270,10 +271,11 @@ impl OtcEscrow {
         if expires_at != 0 && expires_at <= now {
             return Err(Error::InvalidExpiry);
         }
-        let (iban_norm, iban_hash) = normalize_iban(&env, &iban)?;
+        let iban_norm = normalize_iban(&env, &iban)?;
         if seller_name.is_empty() || seller_name.len() > 64 {
             return Err(Error::InvalidName);
         }
+        let payee = payee_hash(&env, &iban_norm, &seller_name);
 
         token::Client::new(&env, &token).transfer(
             &seller,
@@ -290,7 +292,7 @@ impl OtcEscrow {
             amount,
             try_amount_kurus,
             seller_iban: iban_norm,
-            seller_iban_hash: iban_hash,
+            payee_hash: payee,
             seller_name,
             status: OfferStatus::Open,
             buyer: None,
@@ -459,8 +461,8 @@ impl OtcEscrow {
         if claim.domain_hash != cfg.domain_hash {
             return Err(Error::DomainMismatch);
         }
-        if claim.recipient_iban_hash != offer.seller_iban_hash {
-            return Err(Error::IbanMismatch);
+        if claim.payee_hash != offer.payee_hash {
+            return Err(Error::PayeeMismatch);
         }
         if claim.amount_kurus < offer.try_amount_kurus {
             return Err(Error::AmountTooLow);
@@ -550,9 +552,10 @@ impl OtcEscrow {
         decode_public_values(&env, &public_values)
     }
 
-    /// sha256 of the normalized IBAN, as the guest program computes it.
-    pub fn iban_hash(env: Env, iban: String) -> Result<BytesN<32>, Error> {
-        Ok(normalize_iban(&env, &iban)?.1)
+    /// Payee binding hash for a full IBAN + name, exactly as the guest derives it from a masked dekont.
+    pub fn payee_hash(env: Env, iban: String, name: String) -> Result<BytesN<32>, Error> {
+        let norm = normalize_iban(&env, &iban)?;
+        Ok(payee_hash(&env, &norm, &name))
     }
 
     // ───────────────────────────── admin ─────────────────────────────
@@ -650,8 +653,8 @@ fn bump_instance(env: &Env) {
         .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_EXTEND);
 }
 
-/// Uppercase, strip spaces, require `TR` + 24 digits. Returns (normalized, sha256).
-fn normalize_iban(env: &Env, iban: &String) -> Result<(String, BytesN<32>), Error> {
+/// Uppercase, strip spaces, require `TR` + 24 digits.
+fn normalize_iban(env: &Env, iban: &String) -> Result<String, Error> {
     let len = iban.len() as usize;
     if iban.is_empty() || len > 64 {
         return Err(Error::InvalidIban);
@@ -673,9 +676,72 @@ fn normalize_iban(env: &Env, iban: &String) -> Result<(String, BytesN<32>), Erro
     if n != IBAN_LEN || &norm[..2] != b"TR" || !norm[2..].iter().all(|c| c.is_ascii_digit()) {
         return Err(Error::InvalidIban);
     }
-    let bytes = Bytes::from_slice(env, &norm);
-    let hash: BytesN<32> = env.crypto().sha256(&bytes).into();
-    Ok((String::from_bytes(env, &norm), hash))
+    Ok(String::from_bytes(env, &norm))
+}
+
+const PAYEE_DOMAIN: &[u8] = b"zkotc/payee/v1";
+
+/// sha256(PAYEE_DOMAIN ‖ iban[0..4] ‖ iban[4..9] ‖ iban[20..26] ‖ fold_name(name)) — mirrors `zkotc_lib::payee`.
+fn payee_hash(env: &Env, iban_norm: &String, name: &String) -> BytesN<32> {
+    let mut iban = [0u8; IBAN_LEN];
+    iban_norm.copy_into_slice(&mut iban);
+    let mut pre = Bytes::from_slice(env, PAYEE_DOMAIN);
+    pre.extend_from_slice(&iban[0..4]);
+    pre.extend_from_slice(&iban[4..9]);
+    pre.extend_from_slice(&iban[20..26]);
+    let mut raw = [0u8; 64];
+    let n = name.len() as usize;
+    name.copy_into_slice(&mut raw[..n]);
+    let mut folded = [0u8; 64];
+    let m = fold_name(&raw[..n], &mut folded);
+    pre.extend_from_slice(&folded[..m]);
+    env.crypto().sha256(&pre).into()
+}
+
+/// Uppercase ASCII, Turkish letters folded (Ç→C Ğ→G İ/ı→I Ö→O Ş→S Ü→U), whitespace collapsed to
+/// single spaces, trimmed. Operates on UTF-8 bytes; must match `zkotc_lib::payee::fold_name`.
+fn fold_name(input: &[u8], out: &mut [u8; 64]) -> usize {
+    let mut n = 0usize;
+    let mut pending_space = false;
+    let mut i = 0usize;
+    let mut push = |b: u8, n: &mut usize, pending: &mut bool| {
+        if *pending && *n < 64 {
+            out[*n] = b' ';
+            *n += 1;
+            *pending = false;
+        }
+        if *n < 64 {
+            out[*n] = b;
+            *n += 1;
+        }
+    };
+    while i < input.len() {
+        let b = input[i];
+        // two-byte UTF-8 Turkish letters
+        if i + 1 < input.len() {
+            let mapped = match (b, input[i + 1]) {
+                (0xC3, 0x87) | (0xC3, 0xA7) => Some(b'C'), // Ç ç
+                (0xC4, 0x9E) | (0xC4, 0x9F) => Some(b'G'), // Ğ ğ
+                (0xC4, 0xB0) | (0xC4, 0xB1) => Some(b'I'), // İ ı
+                (0xC3, 0x96) | (0xC3, 0xB6) => Some(b'O'), // Ö ö
+                (0xC5, 0x9E) | (0xC5, 0x9F) => Some(b'S'), // Ş ş
+                (0xC3, 0x9C) | (0xC3, 0xBC) => Some(b'U'), // Ü ü
+                _ => None,
+            };
+            if let Some(m) = mapped {
+                push(m, &mut n, &mut pending_space);
+                i += 2;
+                continue;
+            }
+        }
+        if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+            pending_space = n > 0;
+        } else {
+            push(b.to_ascii_uppercase(), &mut n, &mut pending_space);
+        }
+        i += 1;
+    }
+    n
 }
 
 fn decode_public_values(env: &Env, pv: &Bytes) -> Result<PaymentClaim, Error> {
@@ -695,7 +761,7 @@ fn decode_public_values(env: &Env, pv: &Bytes) -> Result<PaymentClaim, Error> {
     Ok(PaymentClaim {
         dkim_key_hash: b32(0),
         domain_hash: b32(32),
-        recipient_iban_hash: b32(64),
+        payee_hash: b32(64),
         amount_kurus: u64_at(96),
         date_yyyymmdd: u64_at(104),
         nullifier: b32(112),

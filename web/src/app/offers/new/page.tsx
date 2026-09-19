@@ -95,7 +95,7 @@ export default function NewOffer() {
           <Field label="Your IBAN (any Turkish bank)" hint="Stored on-chain in plain text so the buyer can pay you. TR + 24 digits.">
             <input className={`${inputCls} mono`} value={iban} onChange={(e) => setIban(e.target.value)} placeholder="TR33 0006 1005 1978 6457 8413 26" required />
           </Field>
-          <Field label="Account holder name" hint="Exactly as your bank shows it — FAST transfers require the recipient name.">
+          <Field label="Account holder name" hint="As printed on bank documents (the proof checks it; upper/lower case and Turkish letters do not matter).">
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="AYŞE YILMAZ" required maxLength={64} />
           </Field>
           <Field label="Offer expires after (days)" hint="After expiry you can withdraw; buyers can no longer reserve.">

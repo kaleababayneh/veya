@@ -131,7 +131,7 @@ export default function OfferPage() {
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
             <li>Reserve the offer (a Stellar transaction, no funds move). You get {cfg ? Number(cfg.lock_duration) / 60 : 60} minutes.</li>
             <li>Send exactly {fmtTRY(offer.try_amount_kurus)} by FAST from your <b>Ziraat</b> account to the seller&apos;s IBAN.</li>
-            <li>Ask Ziraat to e-mail your statement, upload the .eml here, and claim {fmtToken(payout, t.decimals)} {t.symbol}.</li>
+            <li>Have Ziraat e-mail you the transfer&apos;s dekont, upload the .eml here, and claim {fmtToken(payout, t.decimals)} {t.symbol}.</li>
           </ol>
           {offerExpired ? (
             <Alert kind="warn">This offer has expired and can no longer be reserved.</Alert>
@@ -141,7 +141,7 @@ export default function OfferPage() {
             </Button>
           )}
           <p className="text-xs text-muted">
-            You must pay from a Ziraat Bankası TRY account: the proof is built from Ziraat&apos;s DKIM-signed statement e-mail. Fee {feeBps / 100}% is
+            You must pay from a Ziraat Bankası TRY account: the proof is built from Ziraat&apos;s DKIM-signed e-dekont e-mail for the transfer. Fee {feeBps / 100}% is
             deducted from the crypto you receive.
           </p>
         </Card>
@@ -250,6 +250,7 @@ function BuyerFlow({
         emlBase64: await fileToBase64(file),
         offerId: offer.id,
         recipientIban: offer.seller_iban,
+        recipientName: offer.seller_name,
         minAmountKurus: offer.try_amount_kurus,
         sinceYmd,
       });
@@ -267,7 +268,7 @@ function BuyerFlow({
     <Card className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Complete your purchase</h2>
-        <Steps current={stepIdx} steps={["Pay by FAST", "Get statement e-mail", "Generate proof", "Claim crypto"]} />
+        <Steps current={stepIdx} steps={["Pay by FAST", "Get e-dekont e-mail", "Generate proof", "Claim crypto"]} />
       </div>
 
       {lockExpired && (
@@ -301,11 +302,11 @@ function BuyerFlow({
       {/* Step 2 */}
       {paid && (
         <section className="space-y-2 text-sm">
-          <h3 className="font-semibold">2 · Get your statement e-mail from Ziraat</h3>
+          <h3 className="font-semibold">2 · Get the e-dekont e-mail for this transfer</h3>
           <ol className="list-decimal space-y-1 pl-5 text-muted">
-            <li>Ziraat Mobil / İnternet Şubesi → <b>Hesaplarım</b> → your TRY account → <b>Hesap Hareketleri</b>.</li>
-            <li>Choose today&apos;s date range → <b>E-posta Gönder</b> (the e-mail arrives within ~2 minutes from ziraat@ileti.ziraatbank.com.tr).</li>
-            <li>In Gmail open the e-mail → ⋮ → <b>Show original</b> → <b>Download original</b> (a .eml file). Do not forward it; forwarding breaks the signature.</li>
+            <li>Ziraat Mobil / İnternet Şubesi → <b>Hesap Hareketleri</b> → open the FAST transfer you just sent → <b>Dekont Gönder</b> → <b>E-posta</b>.</li>
+            <li>The e-mail (subject <b>e-dekont</b>) arrives within ~2 minutes from ileti.ziraatbank.com.tr.</li>
+            <li>In Gmail open it → ⋮ → <b>Show original</b> → <b>Download original</b> (a .eml file). Do not forward it; forwarding breaks the signature.</li>
           </ol>
         </section>
       )}
@@ -320,7 +321,7 @@ function BuyerFlow({
               <label className="flex items-start gap-2 text-xs text-muted">
                 <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>
-                  I understand the whole e-mail (my 30-day statement) is sent to the prover at <span className="mono">{config.proverUrl}</span>
+                  I understand the e-mail (the dekont of this one transfer) is sent to the prover at <span className="mono">{config.proverUrl}</span>
                   {info ? ` (mode: ${info.prover_mode}, DKIM key: ${info.dkim_source})` : ""}, kept only in memory while the proof is generated, and that only
                   hashes, the amount, the date and a nullifier go on-chain.
                 </span>
@@ -338,9 +339,9 @@ function BuyerFlow({
                   </li>
                 ))}
               </ol>
-              {job.row && (
+              {job.dekont && (
                 <p className="rounded-lg bg-panel-2 p-3 text-xs">
-                  Matched statement row: <b>{fmtYmd(job.row.date_yyyymmdd)}</b> · {job.row.fis_no} · {fmtTRY(job.row.amount_kurus)} · {job.row.description}
+                  Dekont: <b>{fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time}</b> · {job.dekont.fis_no} · {fmtTRY(job.dekont.amount_kurus)} → {job.dekont.recipient_name ?? "?"}{job.dekont.fast_sorgu_no ? ` · FAST ${job.dekont.fast_sorgu_no}` : ""}
                 </p>
               )}
               {job.status === "failed" && (

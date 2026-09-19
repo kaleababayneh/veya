@@ -8,7 +8,7 @@ export type ProverJob = {
   offer_id: number;
   created_at: number;
   updated_at: number;
-  row?: { date_yyyymmdd: number; fis_no: string; amount_kurus: number; description: string } | null;
+  dekont?: { date_yyyymmdd: number; time: string; fis_no: string; amount_kurus: number; description: string; fast_sorgu_no?: string | null; recipient_name?: string | null } | null;
   claim?: {
     dkim_key_hash: string;
     domain_hash: string;
@@ -49,6 +49,7 @@ export async function createJob(args: {
   emlBase64: string;
   offerId: bigint;
   recipientIban: string;
+  recipientName: string;
   minAmountKurus: bigint;
   sinceYmd: number;
 }): Promise<ProverJob> {
@@ -59,6 +60,7 @@ export async function createJob(args: {
       eml_base64: args.emlBase64,
       offer_id: Number(args.offerId),
       recipient_iban: args.recipientIban,
+      recipient_name: args.recipientName,
       min_amount_kurus: Number(args.minAmountKurus),
       since_yyyymmdd: args.sinceYmd,
     }),
@@ -78,7 +80,7 @@ export const fileToBase64 = (f: File) =>
 
 export const JOB_STEPS: { key: JobStatus; label: string; help: string }[] = [
   { key: "queued", label: "Queued", help: "Waiting for the prover." },
-  { key: "executing", label: "Checking e-mail", help: "DKIM signature, statement attachment and payment row are verified." },
+  { key: "executing", label: "Checking e-mail", help: "DKIM signature, e-dekont attachment and transfer details are verified." },
   { key: "proving", label: "Generating proof", help: "RISC Zero zkVM run → Groth16 receipt over BN254 (2–10 min)." },
   { key: "done", label: "Proof ready", help: "Submit it to the escrow contract to receive your crypto." },
 ];

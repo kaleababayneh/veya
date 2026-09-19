@@ -22,7 +22,7 @@
 | F1 | Second wallet reserves a Reserved offer | LockActive |
 | F2 | Seller cancels during active lock | LockActive |
 | F3 | Buyer claims with proof for another offer | WrongOffer |
-| F4 | Statement row to other IBAN | IbanMismatch (prover refuses earlier: no matching row) |
+| F4 | Dekont whose recipient is another IBAN | IbanMismatch (prover refuses earlier: recipient IBAN does not match) |
 | F5 | Row amount < offer | AmountTooLow (prover refuses earlier) |
 | F6 | Row dated before reservation day | DateOutOfWindow |
 | F7 | Same .eml row on a second offer | NullifierUsed |
@@ -35,7 +35,7 @@
 | P1 | Forwarded e-mail | 400 `Dkim(BodyHashMismatch)` |
 | P2 | Non-Ziraat e-mail | 400 `Dkim(NoSignature)` or `FromDomainMismatch` |
 | P3 | Edited attachment | 400 `Dkim(BodyHashMismatch)` |
-| P4 | Statement without matching row | 400 "no outgoing transfer …" |
+| P4 | Dekont of another transfer / incoming dekont | 400 "recipient IBAN does not match" / "incoming transfer" |
 | P5 | > 2 MiB file | 400 "e-mail larger than 2 MiB" |
 | P6 | Prover down | UI shows fetch error, reservation unaffected |
 

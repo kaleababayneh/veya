@@ -1,6 +1,6 @@
 //! zkotc-server: HTTP prover (RISC Zero backend).
 //!
-//!   POST /jobs   {eml_base64, offer_id, recipient_iban, min_amount_kurus, since_yyyymmdd}
+//!   POST /jobs   {eml_base64, offer_id, recipient_iban, recipient_name, min_amount_kurus, since_yyyymmdd}
 //!   GET  /jobs/{id}
 //!   GET  /info   {image_id, prover_mode, dkim_source, public_values_len}
 //!   GET  /health
@@ -43,7 +43,7 @@ struct Job {
     offer_id: u64,
     created_at: u64,
     updated_at: u64,
-    row: Option<RowJson>,
+    dekont: Option<DekontJson>,
     claim: Option<ClaimJson>,
     public_values: Option<String>,
     journal_digest: Option<String>,
@@ -54,11 +54,15 @@ struct Job {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct RowJson {
+struct DekontJson {
     date_yyyymmdd: u64,
+    time: String,
     fis_no: String,
     amount_kurus: u64,
+    /// description with IBANs masked, for display only
     description: String,
+    fast_sorgu_no: Option<String>,
+    recipient_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -66,6 +70,8 @@ struct NewJob {
     eml_base64: String,
     offer_id: u64,
     recipient_iban: String,
+    #[serde(default)]
+    recipient_name: String,
     #[serde(default = "one")]
     min_amount_kurus: u64,
     #[serde(default)]
@@ -205,7 +211,7 @@ async fn create_job(
         return Err(bad("e-mail larger than 2 MiB".into()));
     }
     let der = resolve_dkim_der(&eml, st.dkim_dns, Some(PINNED_DER)).await.map_err(|e| bad(format!("dkim key: {e}")))?;
-    let (input, row) = build_input(eml, der, &req.recipient_iban, req.min_amount_kurus, req.since_yyyymmdd, req.offer_id).map_err(|e| bad(e.to_string()))?;
+    let (input, d) = build_input(eml, der, &req.recipient_iban, &req.recipient_name, req.min_amount_kurus, req.since_yyyymmdd, req.offer_id).map_err(|e| bad(e.to_string()))?;
     // fail fast on the host with the exact same code the guest runs
     let claim = zkotc_lib::prove_payment(&input).map_err(|e| bad(format!("verification failed: {e}")))?;
 
@@ -217,11 +223,14 @@ async fn create_job(
         offer_id: req.offer_id,
         created_at: t,
         updated_at: t,
-        row: Some(RowJson {
-            date_yyyymmdd: row.date_yyyymmdd,
-            fis_no: row.fis_no.clone(),
-            amount_kurus: row.amount_kurus.unsigned_abs(),
-            description: mask_ibans(&row.description),
+        dekont: Some(DekontJson {
+            date_yyyymmdd: d.date_yyyymmdd,
+            time: d.time.clone(),
+            fis_no: d.fis_no.clone(),
+            amount_kurus: d.amount_kurus,
+            description: mask_ibans(&d.description),
+            fast_sorgu_no: d.fast_sorgu_no().map(str::to_string),
+            recipient_name: d.recipient_name().map(str::to_string),
         }),
         claim: Some(ClaimJson::from(&claim)),
         public_values: Some(format!("0x{}", hex::encode(claim.to_bytes()))),

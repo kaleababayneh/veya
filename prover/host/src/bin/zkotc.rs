@@ -1,7 +1,7 @@
-//! zkotc CLI (RISC Zero)
+//! zkotc CLI (RISC Zero) — evidence: Ziraat e-dekont e-mail (.eml)
 //!   zkotc image-id
-//!   zkotc execute --eml statement.eml --iban TR.. --offer-id 1 [--min-kurus N] [--since YYYYMMDD] [--dns]
-//!   zkotc prove   --eml statement.eml --iban TR.. --offer-id 1 --out proof.json [--dns]
+//!   zkotc execute --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 [--min-kurus N] [--since YYYYMMDD] [--dns]
+//!   zkotc prove   --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --out proof.json [--dns]
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use zkotc_host::{build_input, execute, image_id_hex, prove_groth16, resolve_dkim_der, wrap_cached, ClaimJson, PINNED_DER};
@@ -20,6 +20,9 @@ struct Common {
     /// payee IBAN (seller)
     #[arg(long)]
     iban: String,
+    /// payee name as the bank records it (seller)
+    #[arg(long)]
+    name: String,
     #[arg(long)]
     offer_id: u64,
     #[arg(long, default_value_t = 1)]
@@ -62,8 +65,8 @@ fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::ImageId => println!("{}", image_id_hex()),
         Cmd::Execute(c) => {
-            let (input, row) = prepare(&c)?;
-            println!("row: {} {} {} {}", row.date_yyyymmdd, row.fis_no, row.amount_kurus, row.description);
+            let (input, d) = prepare(&c)?;
+            println!("dekont: {} {} {} amount {} debited {} {:?} sorgu {:?} payee {:?} @ bank {:?}", d.date_yyyymmdd, d.time, d.fis_no, d.amount_kurus, d.debited_kurus, d.direction, d.fast_sorgu_no(), d.recipient_name(), d.recipient_bank_code());
             let ex = execute(&input)?;
             println!("image_id: {}", image_id_hex());
             println!("total_cycles: {}", ex.total_cycles);
@@ -85,9 +88,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn prepare(c: &Common) -> Result<(zkotc_lib::ProverInput, zkotc_lib::statement::Row)> {
+fn prepare(c: &Common) -> Result<(zkotc_lib::ProverInput, zkotc_lib::dekont::Dekont)> {
     let eml = std::fs::read(&c.eml)?;
     let rt = tokio::runtime::Runtime::new()?;
     let der = rt.block_on(resolve_dkim_der(&eml, c.dns, Some(PINNED_DER)))?;
-    build_input(eml, der, &c.iban, c.min_kurus, c.since, c.offer_id)
+    build_input(eml, der, &c.iban, &c.name, c.min_kurus, c.since, c.offer_id)
 }

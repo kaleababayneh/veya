@@ -25,7 +25,6 @@ go install github.com/google/pprof@latest
 RISC0_PPROF_OUT=/tmp/zkotc.pprof ./target/release/zkotc execute --eml my.eml --iban TR... --offer-id 1
 pprof -top -nodecount=30 /tmp/zkotc.pprof
 ```
-Cycle history on a real statement: 33.7M → 13.4M (read blobs with `read_slice` instead of serde `Vec<u8>`)
-→ 6.7M (parse only the requested statement row, per-line base64 decode, hash the DKIM body in place).
-Remaining: MIME part scanning + base64 ≈ 5M, DKIM ≈ 1.5M (RSA/SHA-256 accelerated). Next candidates: a faster
-substring search in `mime::split_parts` (`memchr::memmem`) and decoding only the statement part.
+Cycle history (30-day statement guest, now retired): 33.7M → 13.4M (read blobs with `read_slice` instead of serde
+`Vec<u8>`) → 6.7M (single-row parse, per-line base64, in-place body hash). The e-dekont guest hashes a ~54 KB body and
+parses one transaction; measure it with `execute` on an outgoing e-dekont. Next candidate: `memchr::memmem` in `mime::split_parts`.

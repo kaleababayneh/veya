@@ -105,8 +105,31 @@ fn setup() -> World<'static> {
     }
 }
 
+/// Mirrors zkotc_lib::payee::payee_hash_from_full for IBAN + NAME.
+fn payee_hash_of(iban: &str, name: &str) -> [u8; 32] {
+    let iban: std::string::String = iban.replace(' ', "").to_uppercase();
+    let folded: std::string::String = name
+        .chars()
+        .map(|c| match c {
+            'ç' | 'Ç' => 'C', 'ğ' | 'Ğ' => 'G', 'ı' | 'İ' | 'i' | 'I' => 'I', 'ö' | 'Ö' => 'O', 'ş' | 'Ş' => 'S', 'ü' | 'Ü' => 'U',
+            c => c.to_ascii_uppercase(),
+        })
+        .collect::<std::string::String>()
+        .split_whitespace()
+        .collect::<std::vec::Vec<_>>()
+        .join(" ");
+    let ib = iban.as_str();
+    let mut h = Sha256::new();
+    h.update(b"zkotc/payee/v1");
+    h.update(&ib.as_bytes()[0..4]);
+    h.update(&ib.as_bytes()[4..9]);
+    h.update(&ib.as_bytes()[20..26]);
+    h.update(folded.as_bytes());
+    h.finalize().into()
+}
+
 fn iban_hash() -> [u8; 32] {
-    sha(IBAN.replace(' ', "").as_bytes())
+    payee_hash_of(IBAN, NAME)
 }
 
 fn pv(w: &World, iban_hash: [u8; 32], amount: u64, date: u64, nullifier: [u8; 32], offer_id: u64) -> Bytes {
@@ -157,7 +180,7 @@ fn create_deposits_and_normalizes_iban() {
     let o = w.client.get_offer(&id);
     assert_eq!(o.status, OfferStatus::Open);
     assert_eq!(o.seller_iban, s(&w.env, "TR330006100519786457841326"));
-    assert_eq!(o.seller_iban_hash, BytesN::from_array(&w.env, &iban_hash()));
+    assert_eq!(o.payee_hash, BytesN::from_array(&w.env, &iban_hash()));
     assert_eq!(o.seller_name, s(&w.env, NAME));
     assert_eq!(bal(&w, &w.seller), 900_0000000);
     assert_eq!(bal(&w, &w.client.address), 100_0000000);
@@ -252,7 +275,7 @@ fn fulfill_rejections() {
     );
     assert_eq!(
         w.client.try_fulfill(&id, &w.buyer, &pv(&w, sha(b"other iban"), 4_000_00, DAY0, sha(b"a"), id), &good_proof(&w.env)),
-        Err(Ok(Error::IbanMismatch))
+        Err(Ok(Error::PayeeMismatch))
     );
     assert_eq!(
         w.client.try_fulfill(&id, &w.buyer, &pv(&w, iban_hash(), 3_999_99, DAY0, sha(b"a"), id), &good_proof(&w.env)),
@@ -405,10 +428,13 @@ fn fee_cap_enforced() {
 }
 
 #[test]
-fn iban_hash_view_matches_guest_convention() {
+fn payee_hash_view_matches_guest_convention() {
     let w = setup();
-    let h = w.client.iban_hash(&s(&w.env, "tr33 0006 1005 1978 6457 8413 26"));
-    assert_eq!(h, BytesN::from_array(&w.env, &iban_hash()));
+    let h = w.client.payee_hash(&s(&w.env, "tr33 0006 1005 1978 6457 8413 26"), &s(&w.env, "Ayşe  Yılmaz"));
+    assert_eq!(h, BytesN::from_array(&w.env, &payee_hash_of("TR330006100519786457841326", "AYSE YILMAZ")));
+    // Turkish folding: İ/ı → I, Ç → C, Ö → O, Ş → S, Ü → U, Ğ → G
+    let h2 = w.client.payee_hash(&s(&w.env, IBAN), &s(&w.env, "İbrahim Çağrı Öztürk Şık Ğ"));
+    assert_eq!(h2, BytesN::from_array(&w.env, &payee_hash_of(IBAN, "IBRAHIM CAGRI OZTURK SIK G")));
 }
 
 #[test]
