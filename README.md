@@ -49,11 +49,16 @@ reference CPU prover remains as a fallback engine (`GROTH16_NATIVE_DIR`, 19 s).
 **Runbook: [`docs/GPU.md`](docs/GPU.md)** — rent a box and
 `scripts/gpu/deploy.sh "<ssh line>" --switch` brings a prover up in ~4 minutes from prebuilt artifacts.
 
+## Live demo
+**https://zkotc.vercel.app** (Stellar testnet; deployed 2026-09-10 on request). The site is served over HTTPS, so the GPU prover is reached
+through the Azure VM's TLS endpoint: `https://4-239-243-216.sslip.io/gpu` → Caddy `handle_path /gpu/*` → `http://<gpu box>:11267`
+(`docs/OPERATIONS.md`). The Vercel project carries the `NEXT_PUBLIC_*` config plus `REVEAL_SECRET_KEY` (sensitive) for `/api/reveal`.
+
 ## Testnet deployments (Protocol 28)
 | Contract | Id |
 |---|---|
 | otc-escrow v5 (P2P market: ads + reservations, encrypted payee, bonds) | `CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG` |
-| otc-escrow v4 (single offers; superseded 2026-09-10) | `CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV` |
+| otc-escrow v4 (single offers; retired 2026-09-10: emptied + paused) | `CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV` |
 | RISC Zero verifier router | `CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG` |
 | RISC Zero Groth16 verifier (params v3.0.0, selector 73c457ba) | `CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI` |
 | Emergency stop / timelock | `CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4` / `CDJ47SNGJXWT435KYW4QO4QX262RUANOKLRGHC2PLW2YI7EQHFCQAMBR` |
@@ -68,6 +73,10 @@ price, holds that slice for `lock_duration`, and is settled by the proof. Severa
 reveal service's X25519 key (`Config::reveal_pubkey`) and stored on-chain only as ciphertext plus `payee_hash`; the app's server route
 `/api/reveal` opens them for the wallet that holds a reservation (or the maker) after a wallet-signed message, and the client refuses
 to show them unless they hash to the on-chain commitment. Nothing on the ledger names a bank account.
+
+**No .eml download (2026-09-10):** with a Google OAuth client id (`NEXT_PUBLIC_GOOGLE_CLIENT_ID`, see `docs/GMAIL-OAUTH.md`)
+the reservation page fetches Ziraat's e-dekont from the buyer's Gmail in the browser (read-only token, never sent to us) and
+submits the raw message to the prover; manual upload stays as the fallback.
 
 **Trust model.** The buyer pays off-chain after reserving, so a timer alone would let the maker withdraw the moment it ends.
 The escrow therefore has: `declare_paid` (the locked buyer records the payment; the lock is extended to at least

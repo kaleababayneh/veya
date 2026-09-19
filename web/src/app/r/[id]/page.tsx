@@ -7,6 +7,7 @@ import { useWallet } from "@/lib/wallet";
 import { escrow, getAd, getReservation, getConfig, send, unwrapResult, explainError, ERROR_HELP, type Ad, type Reservation, type EscrowConfig } from "@/lib/escrow";
 import { requestReveal, type Revealed } from "@/lib/reveal";
 import { createJob, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJob, type ProverInfo } from "@/lib/prover";
+import { gmailConfigured, getGmailToken, findDekontMails, fetchRawEmlBase64, forgetGmailToken } from "@/lib/gmail";
 import { tokenByAddress } from "@/lib/tokens";
 import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, istanbulYmd, nowSec, short, hexToBuffer, bytesToHex, paymentReference } from "@/lib/format";
 import { config } from "@/lib/config";
@@ -255,6 +256,7 @@ function BuyerFlow({
   const [job, setJob] = useState<ProverJob | null>(null);
   const [jobErr, setJobErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [gmail, setGmail] = useState<{ phase: "idle" | "auth" | "search" | "verify" | "none" | "error"; msg?: string }>({ phase: "idle" });
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const bond = mode === "bond";
@@ -284,34 +286,57 @@ function BuyerFlow({
     return () => { if (poll.current) clearInterval(poll.current); };
   }, [job]);
 
+  const submitEml = async (emlBase64: string) => {
+    if (!payee) throw new Error("payee details not revealed");
+    const j = await createJob({ emlBase64, offerId: r.id, buyer: address, recipientIban: payee.iban, recipientName: payee.name, minAmountKurus: r.try_amount_kurus, sinceYmd });
+    localStorage.setItem(`zkotc-job-r${r.id}`, j.id);
+    setJob(j);
+  };
+
   const upload = async () => {
-    if (!file || !payee) return;
+    if (!file) return;
     setJobErr(null);
     try {
-      const j = await createJob({
-        emlBase64: await fileToBase64(file),
-        offerId: r.id,
-        buyer: address,
-        recipientIban: payee.iban,
-        recipientName: payee.name,
-        minAmountKurus: r.try_amount_kurus,
-        sinceYmd,
-      });
-      localStorage.setItem(`zkotc-job-r${r.id}`, j.id);
-      setJob(j);
+      await submitEml(await fileToBase64(file));
     } catch (e) {
       setJobErr(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const stepIdx = !payee ? 0 : !paid ? 1 : !job ? 2 : job.status === "done" ? 4 : 3;
+  /** Gmail path: token → search e-dekonts since the reservation → try them newest-first until the prover accepts one. */
+  const fetchFromGmail = async () => {
+    setJobErr(null);
+    try {
+      setGmail({ phase: "auth" });
+      const token = await getGmailToken();
+      setGmail({ phase: "search" });
+      const mails = await findDekontMails(token, Number(r.created_at));
+      if (mails.length === 0) return setGmail({ phase: "none" });
+      let lastErr = "";
+      for (const m of mails) {
+        setGmail({ phase: "verify", msg: `Checking the e-dekont from ${new Date(m.internalDate * 1000).toLocaleTimeString("en-GB", { timeZone: "Europe/Istanbul" })}…` });
+        try {
+          await submitEml(await fetchRawEmlBase64(token, m.id));
+          setGmail({ phase: "idle" });
+          return;
+        } catch (e) {
+          lastErr = e instanceof Error ? e.message : String(e);
+        }
+      }
+      setGmail({ phase: "error", msg: `${mails.length} e-dekont e-mail${mails.length > 1 ? "s" : ""} since your reservation, none for this payment: ${lastErr}` });
+    } catch (e) {
+      setGmail({ phase: "error", msg: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  const stepIdx = !payee ? 0 : !paid ? 1 : job?.status === "done" ? 3 : 2;
   const jobStep = job ? JOB_STEPS.findIndex((s) => s.key === job.status) : -1;
 
   return (
     <Card className="space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">{bond ? "Claim the maker's bond" : "Complete your purchase"}</h2>
-        <Steps current={stepIdx} steps={["Payee details", bond ? "Payment declared" : "Pay & declare", "e-dekont e-mail", "Proof", bond ? "Claim bond" : `Claim ${t.symbol}`]} />
+        <Steps current={stepIdx} steps={["Payee details", bond ? "Payment declared" : "Pay & declare", "Prove from e-mail", bond ? "Claim bond" : `Claim ${t.symbol}`]} />
       </div>
 
       {bond && (
@@ -386,25 +411,16 @@ function BuyerFlow({
         </section>
       )}
 
-      {/* Step 2: e-mail */}
-      {paid && canPay && (
-        <section className="space-y-2 text-sm">
-          <h3 className="font-semibold">3 · Get the e-dekont e-mail for this transfer</h3>
-          <ol className="list-decimal space-y-1 pl-5 text-muted">
-            <li>Ziraat Mobil / İnternet Şubesi → <b>Hesap Hareketleri</b> → open the FAST transfer you sent → <b>Dekont Gönder</b> → <b>E-posta</b>.</li>
-            <li>The e-mail (subject <b>e-dekont</b>) arrives within ~2 minutes from ileti.ziraatbank.com.tr.</li>
-            <li>In Gmail open it → ⋮ → <b>Show original</b> → <b>Download original</b> (a .eml file). Do not forward it; forwarding breaks the signature.</li>
-          </ol>
-        </section>
-      )}
-
-      {/* Step 3: proof */}
+      {/* Step 2+3: e-mail → proof */}
       {paid && canPay && (
         <section className="space-y-3">
-          <h3 className="text-sm font-semibold">4 · Generate the zero-knowledge proof</h3>
+          <h3 className="text-sm font-semibold">3 · Prove the payment from Ziraat&apos;s e-dekont e-mail</h3>
           {!job ? (
             <>
-              <input type="file" accept=".eml,message/rfc822" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block text-sm" />
+              <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+                <li>Ziraat Mobil / İnternet Şubesi → <b>Hesap Hareketleri</b> → open the FAST transfer you sent → <b>Dekont Gönder</b> → <b>E-posta</b>.</li>
+                <li>The e-mail (subject <b>e-dekont</b>) arrives within ~2 minutes from ileti.ziraatbank.com.tr.</li>
+              </ol>
               <label className="flex items-start gap-2 text-xs text-muted">
                 <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>
@@ -413,7 +429,31 @@ function BuyerFlow({
                   the date and a nullifier go on-chain.
                 </span>
               </label>
-              <Button onClick={upload} disabled={!file || !consent}>Verify e-mail and start proving</Button>
+              {gmailConfigured() ? (
+                <div className="space-y-2 rounded-xl border border-line bg-panel-2 p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button onClick={fetchFromGmail} disabled={!consent || gmail.phase === "auth" || gmail.phase === "search" || gmail.phase === "verify"}>
+                      {gmail.phase === "auth" ? <><Spinner /> Waiting for Google…</> : gmail.phase === "search" ? <><Spinner /> Searching your inbox…</> : gmail.phase === "verify" ? <><Spinner /> {gmail.msg}</> : "Fetch the e-dekont from Gmail"}
+                    </Button>
+                    <span className="text-xs text-muted">Read-only Gmail access from this browser; the Google token never leaves the page and only the matching e-mail is sent to the prover.</span>
+                  </div>
+                  {gmail.phase === "none" && (
+                    <Alert kind="warn">
+                      No e-dekont from Ziraat since your reservation ({fmtDate(r.created_at)}) is in this Gmail account yet. Send it from Ziraat Mobil (Dekont Gönder → E-posta), wait a minute,
+                      then <button className="underline" onClick={fetchFromGmail}>check again</button>. Different mailbox? <button className="underline" onClick={() => { forgetGmailToken(); fetchFromGmail(); }}>switch Google account</button>.
+                    </Alert>
+                  )}
+                  {gmail.phase === "error" && <Alert kind="error">{gmail.msg}</Alert>}
+                </div>
+              ) : null}
+              <details className="text-sm">
+                <summary className="cursor-pointer text-muted">{gmailConfigured() ? "Not on Gmail? Upload the .eml file instead" : "Upload the .eml file"}</summary>
+                <div className="mt-2 space-y-2">
+                  <p className="text-xs text-muted">In Gmail: open the e-mail → ⋮ → <b>Show original</b> → <b>Download original</b>. In Apple Mail: File → Save As → Raw Message Source. Do not forward it; forwarding breaks the signature.</p>
+                  <input type="file" accept=".eml,message/rfc822" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block text-sm" />
+                  <Button variant="ghost" onClick={upload} disabled={!file || !consent}>Verify e-mail and start proving</Button>
+                </div>
+              </details>
               {jobErr && <Alert kind="error">{jobErr}</Alert>}
             </>
           ) : (
@@ -433,7 +473,7 @@ function BuyerFlow({
               )}
               {job.status === "failed" && (
                 <Alert kind="error">
-                  Proof failed: {job.error}. <button className="underline" onClick={() => { localStorage.removeItem(`zkotc-job-r${r.id}`); setJob(null); }}>Try another .eml</button>
+                  Proof failed: {job.error}. <button className="underline" onClick={() => { localStorage.removeItem(`zkotc-job-r${r.id}`); setJob(null); }}>Try again</button>
                 </Alert>
               )}
               {job.cycles ? <p className="text-xs text-muted">{job.cycles.toLocaleString()} zkVM cycles</p> : null}
@@ -445,7 +485,7 @@ function BuyerFlow({
       {/* Step 4: claim */}
       {job?.status === "done" && job.proof && job.public_values && (
         <section className="space-y-3">
-          <h3 className="text-sm font-semibold">5 · {bond ? "Claim the bond" : `Claim your ${t.symbol}`}</h3>
+          <h3 className="text-sm font-semibold">4 · {bond ? "Claim the bond" : `Claim your ${t.symbol}`}</h3>
           <p className="text-sm text-muted">The proof ({(job.proof.length - 2) / 2} bytes) is verified by the Soroban verifier contract inside the same transaction that pays you.</p>
           {cfg && info && bytesToHex(cfg.image_id).toLowerCase() !== info.image_id.replace(/^0x/, "").toLowerCase() && (
             <Alert kind="error">

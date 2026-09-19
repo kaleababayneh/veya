@@ -134,4 +134,5 @@ if [ -n "$TEST_EML" ]; then
 fi
 
 echo; echo "done in $(( $(date +%s) - T0 ))s.  prover: $URL   image_id: $IMG"
+echo "HTTPS for the Vercel site: on the Azure VM set /etc/caddy/Caddyfile handle_path /gpu/* → reverse_proxy ${URL#http://} and reload caddy."
 echo "logs on the box: ~/zkotc/server.log, ~/zkotc/bootstrap.log.  Destroy the instance when finished — nothing on it needs saving."

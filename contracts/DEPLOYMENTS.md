@@ -13,6 +13,15 @@ SP1-era deployments (superseded 2026-09-08): see git tag `sp1-backend`.
 | **otc-escrow-v5** (current, 2026-09-10) | **P2P market**: maker ads (liquidity + price + per-trade limits + encrypted payee details) and per-trade reservations; `declare_paid`, per-reservation bond slices, `claim_bond`/`reclaim_bond`, wallet-bound payment reference; image_id 89f97cff…3775; lock 3600 s, proof window 7200 s, bond 5 %, late-claim 3 d, fee 25 bps, ₺50–₺5000, ≤5 reservations/ad, ≤2 active/buyer; reveal_pubkey 7058347fc86ef5ac89b17f93f2e9ff3d0f828c235921fd3c34860b651d29a95c (secret in web/.env.local `REVEAL_SECRET_KEY`) | CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG |
 | **otc-escrow-v4** (current, 2026-09-09) | escrow with `declare_paid` protection + 5 % seller bond + late `claim_bond`; image_id eaf273e6fcbbbe98ce40febd9583beb50ef1ee6f4fb3cd791239993921ae6e58 (GPU prover build); lock 3600 s, proof window 7200 s, late-claim window 3 d, fee 25 bps | CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV |
 | otc-escrow (v3, superseded 2026-09-09; offer #1 cancelled) | escrow calling the RISC Zero router; image_id 9ec8ddc3193d4b3a0a6ce64efbdbbf07ddf8f23e0ddc943db130f64259087cbf | CBVLRH22A6QWM53NDMYKYTSNS5M7472IPLRJTSWCMU4WHBCX6JBZ5ERW |
+
+### Retired escrows (2026-09-10)
+Soroban contracts cannot be deleted. Every superseded escrow was **emptied and paused** (`set_paused(true)`: no new offers or
+locks; leftover settlements stay possible) and is no longer referenced by the app. Their ledger entries expire when nobody
+bumps the TTL (instance ≤ 120 days after the last bump). Balances after clean-up: v3 CBVLRH22… 0, v2 CCTBLF3X… 0, SP1-era
+CCEZJMQD… 0 (offer #2, 5 XLM, cancelled), v4 CBYZNQAO… offer #1 cancelled (5.25 XLM back); offer #2 (locked+declared by a
+user wallet) released + cancelled after its window — its 0.25 XLM bond is held until the 3-day late-claim window ends
+(`withdraw_bond 2` from `stellarpro` after 2026-09-13 ~00:00 UTC). To make a retired contract fully inert, `upgrade` it to a
+stub wasm once its balance is zero.
 | risc0 router | NethermindEth/stellar-risc0-verifier VerifierRouter | CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG |
 | risc0 groth16 verifier | params v3.0.0 (control root a54dc85a…), selector 73c457ba | CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI |
 | emergency stop | wraps the verifier | CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4 |

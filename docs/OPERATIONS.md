@@ -4,7 +4,7 @@
 |---|---|
 | Host | Azure VM `kaleab5`, Ubuntu 24.04, 4 vCPU x86_64 (Xeon 8171M), 15 GB RAM, 2 TB disk, no GPU |
 | SSH | `ssh kaleab@4.239.243.216` |
-| Public URL | `https://4-239-243-216.sslip.io` (Caddy 2, Let's Encrypt, reverse proxy → `127.0.0.1:8787`) |
+| Public URL | `https://4-239-243-216.sslip.io` (Caddy 2, Let's Encrypt): `/` → the VM's own `zkotc-prover` on `127.0.0.1:8787` (old CPU build, fallback), **`/gpu/*` → the rented GPU box** (`http://98.191.113.12:11267`, `handle_path` strips the prefix) so HTTPS pages (Vercel) can call it; update the IP in `/etc/caddy/Caddyfile` + `systemctl reload caddy` when the box changes |
 | Service | `zkotc-prover.service` (systemd) → `/home/kaleab/zkotc/prover/target/release/zkotc-server` |
 | Env | `PORT=8787 DKIM_DNS=1 SUCCINCT_CACHE_DIR=/home/kaleab/zkotc/cache CORS_ORIGIN=https://zkotc.vercel.app,http://localhost:3000 PROVER_TOKEN=<secret>` (set in the unit file; the same token is `NEXT_PUBLIC_PROVER_TOKEN` in the web env) |
 | Toolchain | rustup stable, `rzup` (cargo-risczero / r0vm 3.0.6, rust 1.97, `risc0-groth16`), Docker (the Groth16 wrap runs `risczero/risc0-groth16-prover:v2025-04-03.1`; user in the `docker` group) |
