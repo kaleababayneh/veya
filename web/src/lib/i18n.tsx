@@ -3,7 +3,7 @@
  * Minimal EN/TR switch for the buyer-facing copy. English strings are the keys; a missing Turkish entry falls
  * back to English, so the toggle can never blank a label. Choice is remembered per browser.
  */
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useSyncExternalStore } from "react";
 
 export type Lang = "en" | "tr";
 
@@ -59,23 +59,30 @@ const TR: Record<string, string> = {
 type I18n = { lang: Lang; setLang: (l: Lang) => void; t: (s: string) => string };
 const Ctx = createContext<I18n>({ lang: "en", setLang: () => {}, t: (s) => s });
 
+// the choice lives in localStorage; useSyncExternalStore keeps server render ("en") and client in step without an effect
+const listeners = new Set<() => void>();
+const subscribe = (cb: () => void) => {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+};
+const getSnapshot = (): Lang => {
+  try {
+    return localStorage.getItem("zkotc-lang") === "tr" ? "tr" : "en";
+  } catch {
+    return "en";
+  }
+};
+const getServerSnapshot = (): Lang => "en";
+
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("en");
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("zkotc-lang");
-      if (saved === "tr" || saved === "en") setLangState(saved);
-    } catch {
-      /* no storage */
-    }
-  }, []);
+  const lang = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const setLang = useCallback((l: Lang) => {
-    setLangState(l);
     try {
       localStorage.setItem("zkotc-lang", l);
     } catch {
       /* ignore */
     }
+    listeners.forEach((cb) => cb());
   }, []);
   const t = useCallback((s: string) => (lang === "tr" ? (TR[s] ?? s) : s), [lang]);
   return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;

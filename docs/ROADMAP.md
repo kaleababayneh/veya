@@ -89,7 +89,7 @@ Ordered by risk. "You" = needs a real bank transfer or a wallet you hold; "me" =
 - [x] Trust statement on How-it-works (done 12 Sep): what the operator can and cannot do today.
 
 ### 17 Sep — submission
-- [ ] README top section: what it is, the 15 s number, live links, trust model, how to try it.
+- [x] README top section (done 12 Sep): pitch, try-it, numbers, v5 flow diagram, repo map, current trust statement.
 - [ ] Demo rehearsal on v5 with a reservation paid an hour before; the .eml already downloaded; backup video of the full loop.
 - [ ] Rent the demo box the evening before the event and keep it through the 20th (~$26); confirm the proxy and escrow after deploy.
 
