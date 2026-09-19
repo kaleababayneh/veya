@@ -43,6 +43,10 @@ const T0: u64 = 1_788_739_200; // 2026-09-07 00:00:00 UTC
 const NOW: u64 = T0 + 3600; // 01:00 UTC = 04:00 Istanbul, 2026-09-07
 const DAY0: u64 = 20_260_907;
 const LOCK: u64 = 3600;
+const PROOF_WINDOW: u64 = 7200;
+const BOND_BPS: u32 = 500; // 5 %
+const LATE_WINDOW: u64 = 3 * 86_400;
+const BOND: i128 = 5_0000000; // 5 % of the 100-token offer
 const IBAN: &str = "TR33 0006 1005 1978 6457 8413 26";
 const NAME: &str = "AYŞE YILMAZ";
 const DOMAIN: &str = "ileti.ziraatbank.com.tr";
@@ -91,6 +95,9 @@ fn setup() -> World<'static> {
         fee_to.into_val(&env),
         50_00u64.into_val(&env),    // min 50 TRY
         5_000_00u64.into_val(&env), // max 5,000 TRY
+        PROOF_WINDOW.into_val(&env),
+        BOND_BPS.into_val(&env),
+        LATE_WINDOW.into_val(&env),
     ];
     let id = env.register(OtcEscrow, args);
     let client = OtcEscrowClient::new(&env, &id);
@@ -182,8 +189,9 @@ fn create_deposits_and_normalizes_iban() {
     assert_eq!(o.seller_iban, s(&w.env, "TR330006100519786457841326"));
     assert_eq!(o.payee_hash, BytesN::from_array(&w.env, &iban_hash()));
     assert_eq!(o.seller_name, s(&w.env, NAME));
-    assert_eq!(bal(&w, &w.seller), 900_0000000);
-    assert_eq!(bal(&w, &w.client.address), 100_0000000);
+    assert_eq!(o.bond, BOND);
+    assert_eq!(bal(&w, &w.seller), 895_0000000, "amount + 5% bond deposited");
+    assert_eq!(bal(&w, &w.client.address), 105_0000000);
     assert_eq!(w.client.offer_count(), 1);
     assert_eq!(w.client.list_offers(&0, &10).len(), 1);
 }
@@ -246,10 +254,12 @@ fn fulfill_happy_path_pays_buyer_and_fee() {
     );
     assert_eq!(claim.amount_kurus, 4_000_00);
     assert_eq!(w.client.get_offer(&id).status, OfferStatus::Fulfilled);
-    // 25 bps fee
+    // 25 bps fee; the bond returns to the seller with the settlement
     assert_eq!(bal(&w, &w.buyer), 99_7500000);
     assert_eq!(bal(&w, &w.fee_to), 2500000);
+    assert_eq!(bal(&w, &w.seller), 900_0000000);
     assert_eq!(bal(&w, &w.client.address), 0);
+    assert_eq!(w.client.get_offer(&id).bond, 0);
     assert!(w.client.is_nullifier_used(&BytesN::from_array(&w.env, &sha(b"row-1"))));
 }
 
@@ -315,9 +325,9 @@ fn fulfill_rejections() {
         w.client.try_fulfill(&id, &w.buyer, &Bytes::from_slice(&w.env, &v), &good_proof(&w.env)),
         Err(Ok(Error::DomainMismatch))
     );
-    // still locked, buyer still owns it, funds untouched
+    // still locked, buyer still owns it, funds (amount + bond) untouched
     assert_eq!(w.client.get_offer(&id).status, OfferStatus::Locked);
-    assert_eq!(bal(&w, &w.client.address), 100_0000000);
+    assert_eq!(bal(&w, &w.client.address), 105_0000000);
 }
 
 #[test]
@@ -422,8 +432,12 @@ fn fee_cap_enforced() {
     let w = setup();
     let cfg = w.client.config();
     assert_eq!(
-        w.client.try_set_config(&cfg.verifier, &cfg.image_id, &cfg.domain_hash, &cfg.lock_duration, &101, &cfg.fee_recipient, &cfg.min_try_kurus, &cfg.max_try_kurus),
+        w.client.try_set_config(&cfg.verifier, &cfg.image_id, &cfg.domain_hash, &cfg.lock_duration, &101, &cfg.fee_recipient, &cfg.min_try_kurus, &cfg.max_try_kurus, &cfg.proof_window, &cfg.bond_bps, &cfg.late_claim_window),
         Err(Ok(Error::InvalidFee))
+    );
+    assert_eq!(
+        w.client.try_set_config(&cfg.verifier, &cfg.image_id, &cfg.domain_hash, &cfg.lock_duration, &cfg.fee_bps, &cfg.fee_recipient, &cfg.min_try_kurus, &cfg.max_try_kurus, &cfg.proof_window, &5_001, &cfg.late_claim_window),
+        Err(Ok(Error::InvalidBond))
     );
 }
 
@@ -451,4 +465,196 @@ fn date_math() {
     assert_eq!(days_from_yyyymmdd(19_700_101), Some(0));
     assert_eq!(days_from_yyyymmdd(20_260_907), Some((T0 / 86_400) as i64));
     assert_eq!(days_from_yyyymmdd(20_261_301), None);
+}
+
+// ───────────────────────── trust gap: declare_paid + seller bond ─────────────────────────
+
+fn proof_for(w: &World, id: u64, row: &[u8]) -> Bytes {
+    pv(w, iban_hash(), 4_000_00, DAY0, sha(row), id)
+}
+
+#[test]
+fn declare_paid_protects_the_buyer() {
+    let w = setup();
+    let id = create(&w);
+    w.client.lock(&id, &w.buyer);
+    let stranger = Address::generate(&w.env);
+
+    // buyer pays 10 minutes in and declares it: the lock now runs to declared_at + proof_window
+    w.env.ledger().set_timestamp(NOW + 600);
+    let o = w.client.declare_paid(&id, &w.buyer);
+    assert_eq!(o.lock_expires_at, NOW + 600 + PROOF_WINDOW);
+    assert_eq!(o.paid_declared_at, NOW + 600);
+    assert_eq!(o.paid_buyer, Some(w.buyer.clone()));
+
+    // the old lock expiry passes: nobody but the buyer can release, the seller cannot withdraw
+    w.env.ledger().set_timestamp(NOW + LOCK + 1);
+    assert_eq!(w.client.try_unlock(&id, &stranger), Err(Ok(Error::LockActive)));
+    assert_eq!(w.client.try_cancel_offer(&id), Err(Ok(Error::LockActive)));
+    assert_eq!(w.client.try_lock(&id, &stranger), Err(Ok(Error::LockActive)));
+
+    // the proof lands inside the window: normal settlement, bond back to the seller
+    w.client.fulfill(&id, &w.buyer, &proof_for(&w, id, b"r1"), &good_proof(&w.env));
+    assert_eq!(w.client.get_offer(&id).status, OfferStatus::Fulfilled);
+    assert_eq!(bal(&w, &w.seller), 900_0000000);
+    assert_eq!(bal(&w, &w.client.address), 0);
+}
+
+#[test]
+fn late_claim_wins_the_bond() {
+    let w = setup();
+    let id = create(&w);
+    w.client.lock(&id, &w.buyer);
+    w.client.declare_paid(&id, &w.buyer);
+
+    // the whole protection window passes without a proof (prover down); the seller withdraws
+    let t_release = NOW + PROOF_WINDOW + 1;
+    w.env.ledger().set_timestamp(t_release);
+    w.client.cancel_offer(&id);
+    let o = w.client.get_offer(&id);
+    assert_eq!(o.status, OfferStatus::Cancelled);
+    assert_eq!(o.bond, BOND, "bond stays in escrow while a declared payment can still be proven");
+    assert_eq!(o.late_claim_until, t_release + LATE_WINDOW);
+    assert_eq!(bal(&w, &w.seller), 995_0000000, "amount refunded, bond held");
+    assert_eq!(w.client.try_withdraw_bond(&id), Err(Ok(Error::BondHeld)));
+
+    // a stranger cannot claim; the declared buyer proves the payment and gets the bond
+    let stranger = Address::generate(&w.env);
+    assert_eq!(
+        w.client.try_claim_bond(&id, &stranger, &proof_for(&w, id, b"r1"), &good_proof(&w.env)),
+        Err(Ok(Error::NotBuyer))
+    );
+    assert_eq!(
+        w.client.try_claim_bond(&id, &w.buyer, &proof_for(&w, id, b"r1"), &bad_proof(&w.env)),
+        Err(Ok(Error::ProofInvalid))
+    );
+    w.env.ledger().set_timestamp(t_release + 3600);
+    let claim = w.client.claim_bond(&id, &w.buyer, &proof_for(&w, id, b"r1"), &good_proof(&w.env));
+    assert_eq!(claim.offer_id, id);
+    assert_eq!(bal(&w, &w.buyer), BOND);
+    assert_eq!(bal(&w, &w.client.address), 0);
+    let o = w.client.get_offer(&id);
+    assert_eq!(o.bond, 0);
+    assert_eq!(o.late_claim_until, 0);
+    assert_eq!(w.client.try_withdraw_bond(&id), Err(Ok(Error::NoBond)));
+    // the same row cannot be used again
+    assert_eq!(
+        w.client.try_claim_bond(&id, &w.buyer, &proof_for(&w, id, b"r1"), &good_proof(&w.env)),
+        Err(Ok(Error::LateClaimClosed))
+    );
+}
+
+#[test]
+fn seller_recovers_the_bond_after_the_claim_window() {
+    let w = setup();
+    let id = create(&w);
+    w.client.lock(&id, &w.buyer);
+    w.client.declare_paid(&id, &w.buyer);
+    let t_release = NOW + PROOF_WINDOW + 1;
+    w.env.ledger().set_timestamp(t_release);
+    let stranger = Address::generate(&w.env);
+    w.client.unlock(&id, &stranger); // third-party release after expiry keeps the claim right
+    let o = w.client.get_offer(&id);
+    assert_eq!(o.status, OfferStatus::Open);
+    assert_eq!(o.late_claim_until, t_release + LATE_WINDOW);
+    w.client.cancel_offer(&id);
+    assert_eq!(w.client.try_withdraw_bond(&id), Err(Ok(Error::BondHeld)));
+
+    w.env.ledger().set_timestamp(t_release + LATE_WINDOW + 1);
+    assert_eq!(
+        w.client.try_claim_bond(&id, &w.buyer, &proof_for(&w, id, b"r1"), &good_proof(&w.env)),
+        Err(Ok(Error::LateClaimClosed))
+    );
+    assert_eq!(w.client.withdraw_bond(&id), BOND);
+    assert_eq!(bal(&w, &w.seller), 1_000_0000000);
+    assert_eq!(w.client.try_withdraw_bond(&id), Err(Ok(Error::NoBond)));
+}
+
+#[test]
+fn buyer_who_gives_up_forfeits_the_claim() {
+    let w = setup();
+    let id = create(&w);
+    w.client.lock(&id, &w.buyer);
+    w.client.declare_paid(&id, &w.buyer);
+    w.client.unlock(&id, &w.buyer); // buyer releases: no late claim survives
+    let o = w.client.get_offer(&id);
+    assert_eq!(o.paid_buyer, None);
+    assert_eq!(o.late_claim_until, 0);
+    w.client.cancel_offer(&id);
+    assert_eq!(bal(&w, &w.seller), 1_000_0000000, "amount and bond back at once");
+    assert_eq!(
+        w.client.try_claim_bond(&id, &w.buyer, &proof_for(&w, id, b"r1"), &good_proof(&w.env)),
+        Err(Ok(Error::NotBuyer))
+    );
+}
+
+#[test]
+fn takeover_buyer_settles_while_first_buyers_claim_is_pending() {
+    let w = setup();
+    let id = create(&w);
+    w.client.lock(&id, &w.buyer);
+    w.client.declare_paid(&id, &w.buyer);
+    let t = NOW + PROOF_WINDOW + 1;
+    w.env.ledger().set_timestamp(t);
+    // another buyer takes the stale lock over: that is a release, the first buyer's claim right opens
+    let second = Address::generate(&w.env);
+    w.client.lock(&id, &second);
+    let o = w.client.get_offer(&id);
+    assert_eq!(o.paid_buyer, Some(w.buyer.clone()));
+    assert_eq!(o.late_claim_until, t + LATE_WINDOW);
+    assert_eq!(w.client.try_declare_paid(&id, &second), Err(Ok(Error::LateClaimPending)));
+    // the second buyer settles with their own proof; the bond stays for the first buyer
+    w.client.fulfill(&id, &second, &proof_for(&w, id, b"second"), &good_proof(&w.env));
+    let o = w.client.get_offer(&id);
+    assert_eq!(o.status, OfferStatus::Fulfilled);
+    assert_eq!(o.bond, BOND, "bond held: the first buyer may still prove they paid too");
+    assert_eq!(w.client.try_withdraw_bond(&id), Err(Ok(Error::BondHeld)));
+    // …and does: the seller took two payments for one delivery and loses the bond
+    w.client.claim_bond(&id, &w.buyer, &proof_for(&w, id, b"first"), &good_proof(&w.env));
+    assert_eq!(bal(&w, &w.buyer), BOND);
+    assert_eq!(w.client.get_offer(&id).bond, 0);
+}
+
+#[test]
+fn declare_paid_rules() {
+    let w = setup();
+    let id = create(&w);
+    let stranger = Address::generate(&w.env);
+    assert_eq!(w.client.try_declare_paid(&id, &w.buyer), Err(Ok(Error::InvalidStatus)));
+    w.client.lock(&id, &w.buyer);
+    assert_eq!(w.client.try_declare_paid(&id, &stranger), Err(Ok(Error::NotBuyer)));
+    w.client.declare_paid(&id, &w.buyer);
+    assert_eq!(w.client.try_declare_paid(&id, &w.buyer), Err(Ok(Error::AlreadyDeclared)));
+    // declaring never shortens a lock that is already longer than the window
+    let w2 = setup();
+    let id2 = create(&w2);
+    w2.client.lock(&id2, &w2.buyer);
+    w2.env.ledger().set_timestamp(NOW + LOCK);
+    assert_eq!(w2.client.try_declare_paid(&id2, &w2.buyer), Err(Ok(Error::LockExpired)));
+}
+
+#[test]
+fn bond_cap_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let a = Address::generate(&env);
+    let args: Vec<Val> = vec![
+        &env,
+        a.clone().into_val(&env),
+        a.clone().into_val(&env),
+        BytesN::from_array(&env, &[7u8; 32]).into_val(&env),
+        BytesN::from_array(&env, &[8u8; 32]).into_val(&env),
+        Vec::<BytesN<32>>::new(&env).into_val(&env),
+        Vec::<Address>::new(&env).into_val(&env),
+        LOCK.into_val(&env),
+        25u32.into_val(&env),
+        a.into_val(&env),
+        50_00u64.into_val(&env),
+        5_000_00u64.into_val(&env),
+        PROOF_WINDOW.into_val(&env),
+        5_001u32.into_val(&env),
+        LATE_WINDOW.into_val(&env),
+    ];
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| env.register(OtcEscrow, args)));
+    assert!(r.is_err(), "bond above 50% must be rejected");
 }

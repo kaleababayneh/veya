@@ -19,6 +19,7 @@ echo ">> admin=$ADMIN verifier=$VERIFIER_ID"
 echo ">> image_id=$IMAGE_ID"
 echo ">> domain_hash=$DOMAIN_HASH dkim_key_hash=$DKIM_KEY_HASH"
 echo ">> tokens: XLM=$XLM_SAC USDC=$USDC_SAC"
+echo ">> lock 3600 s, proof window 7200 s, seller bond 5 %, late-claim window 3 days, fee 25 bps, ₺50–₺5000"
 ( cd escrow && $STELLAR contract build >/dev/null )
 WASM=target/wasm32v1-none/release/zkotc_escrow.wasm
 CONTRACT_ID=$($STELLAR contract deploy \
@@ -34,7 +35,10 @@ CONTRACT_ID=$($STELLAR contract deploy \
   --fee_bps 25 \
   --fee_recipient "$ADMIN" \
   --min_try_kurus 5000 \
-  --max_try_kurus 500000)
+  --max_try_kurus 500000 \
+  --proof_window 7200 \
+  --bond_bps 500 \
+  --late_claim_window 259200)
 echo ">> deployed: $CONTRACT_ID"
 echo "$CONTRACT_ID" > ".$ALIAS.testnet.id"
 echo ">> https://stellar.expert/explorer/testnet/contract/$CONTRACT_ID"

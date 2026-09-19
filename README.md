@@ -33,22 +33,34 @@ A real Ziraat outgoing-FAST e-dekont → DKIM verified inside the RISC Zero gues
 [tx 27a5f44d…](https://stellar.expert/explorer/testnet/tx/27a5f44d076e05f978237f55110e7212e38decf180f14d5472e14cfd8d8b36d3) (fee 0.022 XLM). Tampered journal or wrong image id are rejected.
 The receipt (seal, journal, image id — no e-mail content) is in `contracts/testdata-real-receipt.json`.
 
-**GPU timing (2026-09-09, Vast.ai RTX 4090, 32 vCPU EPYC, $0.36/h):** the same e-dekont proves in **30 s end to end** —
-STARK + succinct receipt ~10 s on the GPU, then the Groth16 wrap 19 s (identity_p254 0.3 s on GPU, circom witness 7 s,
-Groth16 prover 12 s on CPU). The router accepts the seal; a tampered journal is rejected. The wrap uses RISC Zero's
-reference CPU prover run natively (`GROTH16_NATIVE_DIR`, no Docker) because the CUDA Groth16 wrap in risc0 3.0.x
-crashes ([risc0#3785](https://github.com/risc0/risc0/issues/3785)). **Runbook: [`docs/GPU.md`](docs/GPU.md)** — rent a box and
+**GPU timing (2026-09-09, Vast.ai RTX 4090, 32 vCPU EPYC, $0.36/h): 15 s end to end through the API** (was 84 min on
+the CPU VM, 34 s on the first GPU run). STARK + succinct receipt 4.8 s (2.6M guest cycles, 3 segments), identity_p254
+0.3 s, circom witness ~2–4 s in-process, Groth16 2.3 s on the GPU with a persistent [ICICLE-snark](https://github.com/ingonyama-zk/icicle-snark)
+worker, plus upload, DNS key fetch and polling. The router accepts the seal; a tampered journal is rejected. RISC Zero's own
+CUDA Groth16 wrap is not used because it crashes in 3.0.x ([risc0#3785](https://github.com/risc0/risc0/issues/3785)); the
+reference CPU prover remains as a fallback engine (`GROTH16_NATIVE_DIR`, 19 s).
+**Runbook: [`docs/GPU.md`](docs/GPU.md)** — rent a box and
 `scripts/gpu/deploy.sh "<ssh line>" --switch` brings a prover up in ~4 minutes from prebuilt artifacts.
 
 ## Testnet deployments (Protocol 28)
 | Contract | Id |
 |---|---|
-| otc-escrow (RISC Zero) | `CBVLRH22A6QWM53NDMYKYTSNS5M7472IPLRJTSWCMU4WHBCX6JBZ5ERW` |
+| otc-escrow v4 (RISC Zero, declare_paid + seller bond) | `CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV` |
 | RISC Zero verifier router | `CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG` |
 | RISC Zero Groth16 verifier (params v3.0.0, selector 73c457ba) | `CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI` |
 | Emergency stop / timelock | `CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4` / `CDJ47SNGJXWT435KYW4QO4QX262RUANOKLRGHC2PLW2YI7EQHFCQAMBR` |
 Tokens: XLM SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`, USDC SAC `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`.
-Escrow config: lock 3600 s · fee 25 bps · ₺50–₺5 000 · trusted DKIM key `msg2._domainkey.ileti.ziraatbank.com.tr` (sha256 `dfc62dad…c806`).
+Escrow config: lock 3600 s · proof window 7200 s after `declare_paid` · seller bond 5 % · late-claim window 3 days · fee 25 bps · ₺50–₺5 000 ·
+trusted DKIM key `msg2._domainkey.ileti.ziraatbank.com.tr` (sha256 `dfc62dad…c806`) · image id of the GPU prover build (`eaf273e6…`).
+
+**Trust model.** The buyer pays off-chain after locking, so a timer alone would let the seller withdraw the moment it ends.
+The escrow therefore has: `declare_paid` (the locked buyer records the payment; the lock is extended to at least
+`proof_window`, during which only the buyer can release it); a seller bond (`bond_bps` of the amount, deposited with the
+offer); and `claim_bond` (if the offer is released after a declared payment, the buyer who declared can still prove it
+within `late_claim_window` and take the bond; otherwise the seller gets it back via `withdraw_bond` or automatically).
+A takeover of a stale lock counts as a release, so a seller cannot dodge the bond by letting a second buyer settle.
+Residual risks: a buyer can delay a seller by the proof window without paying (no buyer bond yet), and a proof that
+arrives after the late-claim window is not compensated.
 
 ## Run it
 ```sh

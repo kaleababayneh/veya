@@ -3,6 +3,16 @@
 //! by the RISC Zero verifier router (NethermindEth/stellar-risc0-verifier) through Soroban's native
 //! BN254 host functions. The escrow calls `verify(seal, image_id, sha256(journal))` on the router.
 //!
+//! Trust model (why a lock alone is not enough): the buyer pays TRY off-chain *after* locking, so a
+//! seller who could withdraw the moment the lock expires would keep both the TRY and the crypto.
+//! Therefore:
+//! * `declare_paid` — the locked buyer states they have sent the TRY; the lock is extended to at least
+//!   `proof_window` from that moment, during which nobody but the buyer can release it.
+//! * seller bond — `bond_bps` of the amount, deposited with the offer. If the offer is released after a
+//!   declared payment and the buyer later presents a valid proof (`claim_bond`, within
+//!   `late_claim_window`), the bond goes to the buyer. Otherwise the seller gets it back
+//!   (`withdraw_bond`, or automatically on fulfil/cancel when no claim is pending).
+//!
 //! Journal committed by the guest (152 bytes, big-endian) — passed to `fulfill` as `public_values`:
 //!
 //! ```text
@@ -31,6 +41,7 @@ extern crate std;
 pub const PUBLIC_VALUES_LEN: u32 = 152;
 const IBAN_LEN: usize = 26;
 const MAX_FEE_BPS: u32 = 100;
+const MAX_BOND_BPS: u32 = 5_000;
 /// Statement dates are Istanbul local (UTC+3, no DST since 2016).
 const ISTANBUL_OFFSET: u64 = 3 * 3600;
 const DAY_LEDGERS: u32 = 17_280; // ~5s ledgers
@@ -66,6 +77,18 @@ pub enum Error {
     InvalidExpiry = 23,
     InvalidFee = 25,
     InvalidName = 26,
+    /// payment already declared for this lock
+    AlreadyDeclared = 27,
+    /// no declared payment / no late claim open for this caller
+    LateClaimClosed = 28,
+    /// the bond is still reserved for a possible late claim
+    BondHeld = 29,
+    NoBond = 30,
+    InvalidBond = 31,
+    /// the lock has expired (declare before it does)
+    LockExpired = 32,
+    /// another buyer's declared payment is still awaiting a late claim on this offer
+    LateClaimPending = 33,
 }
 
 #[contracttype]
@@ -102,6 +125,16 @@ pub struct Offer {
     /// unix seconds after which the seller may cancel an unlocked offer (0 = never)
     pub expires_at: u64,
     pub fulfilled_at: u64,
+    /// seller bond still held by the escrow (same token as `amount`)
+    pub bond: i128,
+    /// when the locked buyer declared the TRY payment (0 = not declared)
+    pub paid_declared_at: u64,
+    /// who declared it (kept after a release so they can still `claim_bond`)
+    pub paid_buyer: Option<Address>,
+    /// `locked_at` of the lock under which the payment was declared (date window for a late claim)
+    pub paid_locked_at: u64,
+    /// deadline for the declared buyer's `claim_bond` after the offer was released (0 = none)
+    pub late_claim_until: u64,
 }
 
 #[contracttype]
@@ -121,6 +154,12 @@ pub struct Config {
     pub paused: bool,
     pub min_try_kurus: u64,
     pub max_try_kurus: u64,
+    /// seconds of protection after `declare_paid` (the lock is extended to at least this)
+    pub proof_window: u64,
+    /// seller bond in basis points of the offer amount
+    pub bond_bps: u32,
+    /// seconds after a release during which the declared buyer may still `claim_bond`
+    pub late_claim_window: u64,
 }
 
 #[contracttype]
@@ -155,6 +194,7 @@ pub struct OfferCreated {
     pub token: Address,
     pub amount: i128,
     pub try_amount_kurus: u64,
+    pub bond: i128,
 }
 
 #[contractevent]
@@ -173,6 +213,37 @@ pub struct OfferUnlocked {
     pub id: u64,
     pub caller: Address,
     pub after_expiry: bool,
+    /// non-zero when a declared payment survives the release (buyer may `claim_bond` until then)
+    pub late_claim_until: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct PaymentDeclared {
+    #[topic]
+    pub id: u64,
+    pub buyer: Address,
+    pub declared_at: u64,
+    /// nobody but the buyer can release the lock before this
+    pub protected_until: u64,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct BondSlashed {
+    #[topic]
+    pub id: u64,
+    pub buyer: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct BondReturned {
+    #[topic]
+    pub id: u64,
+    pub seller: Address,
+    pub amount: i128,
 }
 
 #[contractevent]
@@ -213,9 +284,15 @@ impl OtcEscrow {
         fee_recipient: Address,
         min_try_kurus: u64,
         max_try_kurus: u64,
+        proof_window: u64,
+        bond_bps: u32,
+        late_claim_window: u64,
     ) {
         if fee_bps > MAX_FEE_BPS {
             panic_with_error!(&env, Error::InvalidFee);
+        }
+        if bond_bps > MAX_BOND_BPS {
+            panic_with_error!(&env, Error::InvalidBond);
         }
         let cfg = Config {
             admin,
@@ -228,6 +305,9 @@ impl OtcEscrow {
             paused: false,
             min_try_kurus,
             max_try_kurus,
+            proof_window,
+            bond_bps,
+            late_claim_window,
         };
         env.storage().instance().set(&DataKey::Config, &cfg);
         env.storage().instance().set(&DataKey::DkimKeys, &dkim_key_hashes);
@@ -237,7 +317,8 @@ impl OtcEscrow {
 
     // ───────────────────────────── seller ─────────────────────────────
 
-    /// Deposit `amount` of `token` and list it for `try_amount_kurus`, payable to `iban`.
+    /// Deposit `amount` of `token` plus the seller bond (`bond_bps`) and list it for `try_amount_kurus`,
+    /// payable to `iban`.
     pub fn create_offer(
         env: Env,
         seller: Address,
@@ -276,11 +357,12 @@ impl OtcEscrow {
             return Err(Error::InvalidName);
         }
         let payee = payee_hash(&env, &iban_norm, &seller_name);
+        let bond = amount * (cfg.bond_bps as i128) / 10_000;
 
         token::Client::new(&env, &token).transfer(
             &seller,
             &env.current_contract_address(),
-            &amount,
+            &(amount + bond),
         );
 
         let id: u64 = env.storage().instance().get(&DataKey::OfferCount).unwrap_or(0) + 1;
@@ -301,6 +383,11 @@ impl OtcEscrow {
             created_at: now,
             expires_at,
             fulfilled_at: 0,
+            bond,
+            paid_declared_at: 0,
+            paid_buyer: None,
+            paid_locked_at: 0,
+            late_claim_until: 0,
         };
         put_offer(&env, &offer);
         bump_instance(&env);
@@ -310,15 +397,19 @@ impl OtcEscrow {
             token: offer.token.clone(),
             amount,
             try_amount_kurus,
+            bond,
         }
         .publish(&env);
         Ok(id)
     }
 
-    /// Seller withdraws an Open offer (or a Locked one whose lock has expired).
+    /// Seller withdraws an Open offer (or a Locked one whose lock — including any `declare_paid`
+    /// protection — has expired). The bond comes back with the funds unless a declared payment is
+    /// pending a late claim; then it stays until `late_claim_until` (see `withdraw_bond`).
     pub fn cancel_offer(env: Env, id: u64) -> Result<(), Error> {
         let mut offer = get_offer(&env, id)?;
         offer.seller.require_auth();
+        let cfg = config(&env)?;
         let now = env.ledger().timestamp();
         match offer.status {
             OfferStatus::Open => {}
@@ -326,23 +417,47 @@ impl OtcEscrow {
                 if now < offer.lock_expires_at {
                     return Err(Error::LockActive);
                 }
+                release_lock(&mut offer, &cfg, now, false);
             }
             _ => return Err(Error::InvalidStatus),
         }
         offer.status = OfferStatus::Cancelled;
-        offer.buyer = None;
+        let tk = token::Client::new(&env, &offer.token);
+        let mut refund = offer.amount;
+        if offer.bond > 0 && offer.late_claim_until <= now {
+            refund += offer.bond;
+            BondReturned { id, seller: offer.seller.clone(), amount: offer.bond }.publish(&env);
+            offer.bond = 0;
+        }
         put_offer(&env, &offer);
-        token::Client::new(&env, &offer.token).transfer(
-            &env.current_contract_address(),
-            &offer.seller,
-            &offer.amount,
-        );
+        tk.transfer(&env.current_contract_address(), &offer.seller, &refund);
         OfferCancelled {
             id,
             seller: offer.seller,
         }
         .publish(&env);
         Ok(())
+    }
+
+    /// Seller collects a bond that was held back for a possible late claim, once that window is over.
+    pub fn withdraw_bond(env: Env, id: u64) -> Result<i128, Error> {
+        let mut offer = get_offer(&env, id)?;
+        offer.seller.require_auth();
+        if !matches!(offer.status, OfferStatus::Cancelled | OfferStatus::Fulfilled) {
+            return Err(Error::InvalidStatus);
+        }
+        if offer.bond <= 0 {
+            return Err(Error::NoBond);
+        }
+        if env.ledger().timestamp() <= offer.late_claim_until {
+            return Err(Error::BondHeld);
+        }
+        let bond = offer.bond;
+        offer.bond = 0;
+        put_offer(&env, &offer);
+        token::Client::new(&env, &offer.token).transfer(&env.current_contract_address(), &offer.seller, &bond);
+        BondReturned { id, seller: offer.seller, amount: bond }.publish(&env);
+        Ok(bond)
     }
 
     // ───────────────────────────── buyer ─────────────────────────────
@@ -359,10 +474,11 @@ impl OtcEscrow {
         match offer.status {
             OfferStatus::Open => {}
             OfferStatus::Locked => {
-                // a stale lock may be taken over
+                // a stale lock may be taken over; a payment declared under it keeps its late-claim right
                 if now < offer.lock_expires_at {
                     return Err(Error::LockActive);
                 }
+                release_lock(&mut offer, &cfg, now, false);
             }
             _ => return Err(Error::InvalidStatus),
         }
@@ -383,31 +499,106 @@ impl OtcEscrow {
         Ok(offer)
     }
 
-    /// Buyer releases their own lock early (or anyone releases an expired one).
+    /// Buyer releases their own lock early (giving up any declared payment), or anyone releases an
+    /// expired one — then a declared payment keeps its late-claim right for `late_claim_window`.
     pub fn unlock(env: Env, id: u64, caller: Address) -> Result<(), Error> {
         caller.require_auth();
         let mut offer = get_offer(&env, id)?;
         if offer.status != OfferStatus::Locked {
             return Err(Error::InvalidStatus);
         }
+        let cfg = config(&env)?;
         let now = env.ledger().timestamp();
         let is_buyer = offer.buyer.as_ref() == Some(&caller);
         let after_expiry = now >= offer.lock_expires_at;
         if !is_buyer && !after_expiry {
             return Err(Error::LockActive);
         }
+        release_lock(&mut offer, &cfg, now, is_buyer);
         offer.status = OfferStatus::Open;
-        offer.buyer = None;
-        offer.locked_at = 0;
-        offer.lock_expires_at = 0;
         put_offer(&env, &offer);
         OfferUnlocked {
             id,
             caller,
             after_expiry,
+            late_claim_until: offer.late_claim_until,
         }
         .publish(&env);
         Ok(())
+    }
+
+    /// The locked buyer states that the TRY transfer has been sent. From now on nobody but the buyer can
+    /// release the lock for at least `proof_window` seconds, and if the offer is nevertheless released
+    /// later, a valid proof still wins the seller's bond (`claim_bond`).
+    pub fn declare_paid(env: Env, id: u64, buyer: Address) -> Result<Offer, Error> {
+        buyer.require_auth();
+        let cfg = config(&env)?;
+        let mut offer = get_offer(&env, id)?;
+        if offer.status != OfferStatus::Locked {
+            return Err(Error::InvalidStatus);
+        }
+        if offer.buyer.as_ref() != Some(&buyer) {
+            return Err(Error::NotBuyer);
+        }
+        let now = env.ledger().timestamp();
+        if now >= offer.lock_expires_at {
+            return Err(Error::LockExpired);
+        }
+        if offer.paid_declared_at != 0 && offer.paid_buyer.as_ref() == Some(&buyer) {
+            return Err(Error::AlreadyDeclared);
+        }
+        if offer.late_claim_until > now && offer.paid_buyer.is_some() {
+            return Err(Error::LateClaimPending);
+        }
+        offer.paid_declared_at = now;
+        offer.paid_buyer = Some(buyer.clone());
+        offer.paid_locked_at = offer.locked_at;
+        offer.late_claim_until = 0;
+        let protected_until = now + cfg.proof_window;
+        if protected_until > offer.lock_expires_at {
+            offer.lock_expires_at = protected_until;
+        }
+        put_offer(&env, &offer);
+        PaymentDeclared {
+            id,
+            buyer,
+            declared_at: now,
+            protected_until: offer.lock_expires_at,
+        }
+        .publish(&env);
+        Ok(offer)
+    }
+
+    /// After a release (unlock by a third party or cancel) that happened despite a declared payment, the
+    /// declared buyer proves the payment within `late_claim_window` and receives the seller's bond.
+    pub fn claim_bond(
+        env: Env,
+        id: u64,
+        buyer: Address,
+        public_values: Bytes,
+        proof: Bytes,
+    ) -> Result<PaymentClaim, Error> {
+        buyer.require_auth();
+        let cfg = config(&env)?;
+        let mut offer = get_offer(&env, id)?;
+        if offer.paid_buyer.as_ref() != Some(&buyer) {
+            return Err(Error::NotBuyer);
+        }
+        let now = env.ledger().timestamp();
+        if offer.late_claim_until == 0 || now > offer.late_claim_until {
+            return Err(Error::LateClaimClosed);
+        }
+        if offer.bond <= 0 {
+            return Err(Error::NoBond);
+        }
+        let claim = verify_and_consume(&env, &cfg, &offer, offer.paid_locked_at, &public_values, &proof)?;
+        let bond = offer.bond;
+        offer.bond = 0;
+        offer.late_claim_until = 0;
+        put_offer(&env, &offer);
+        token::Client::new(&env, &offer.token).transfer(&env.current_contract_address(), &buyer, &bond);
+        BondSlashed { id, buyer, amount: bond }.publish(&env);
+        Ok(claim)
     }
 
     /// Buyer proves the TRY payment and receives the crypto.
@@ -428,64 +619,23 @@ impl OtcEscrow {
             return Err(Error::NotBuyer);
         }
 
-        // 1. cryptographic verification: RISC Zero Groth16 receipt via the verifier router
-        //    (native BN254 pairing). journal_digest = sha256(journal) per RISC Zero's ReceiptClaim.
-        let journal_digest: BytesN<32> = env.crypto().sha256(&public_values).into();
-        let res = env.try_invoke_contract::<(), soroban_sdk::Error>(
-            &cfg.verifier,
-            &Symbol::new(&env, "verify"),
-            vec![
-                &env,
-                proof.into_val(&env),
-                cfg.image_id.into_val(&env),
-                journal_digest.into_val(&env),
-            ],
-        );
-        if !matches!(res, Ok(Ok(()))) {
-            return Err(Error::ProofInvalid);
-        }
-
-        // 2. business checks on the committed values
-        let claim = decode_public_values(&env, &public_values)?;
-        if claim.offer_id != id {
-            return Err(Error::WrongOffer);
-        }
-        let keys: Vec<BytesN<32>> = env
-            .storage()
-            .instance()
-            .get(&DataKey::DkimKeys)
-            .unwrap_or(Vec::new(&env));
-        if !keys.contains(&claim.dkim_key_hash) {
-            return Err(Error::DkimKeyNotTrusted);
-        }
-        if claim.domain_hash != cfg.domain_hash {
-            return Err(Error::DomainMismatch);
-        }
-        if claim.payee_hash != offer.payee_hash {
-            return Err(Error::PayeeMismatch);
-        }
-        if claim.amount_kurus < offer.try_amount_kurus {
-            return Err(Error::AmountTooLow);
-        }
+        let claim = verify_and_consume(&env, &cfg, &offer, offer.locked_at, &public_values, &proof)?;
         let now = env.ledger().timestamp();
-        let pay_day = days_from_yyyymmdd(claim.date_yyyymmdd).ok_or(Error::InvalidPublicValues)?;
-        let lock_day = ((offer.locked_at + ISTANBUL_OFFSET) / 86_400) as i64;
-        let today = ((now + ISTANBUL_OFFSET) / 86_400) as i64;
-        if pay_day < lock_day || pay_day > today {
-            return Err(Error::DateOutOfWindow);
-        }
-        let nkey = DataKey::Nullifier(claim.nullifier.clone());
-        if env.storage().persistent().has(&nkey) {
-            return Err(Error::NullifierUsed);
-        }
-        env.storage().persistent().set(&nkey, &id);
-        env.storage()
-            .persistent()
-            .extend_ttl(&nkey, OFFER_TTL_THRESHOLD, OFFER_TTL_EXTEND);
 
-        // 3. settle
+        // settle
         offer.status = OfferStatus::Fulfilled;
         offer.fulfilled_at = now;
+        // the bond goes home with the settlement unless another buyer's declared payment may still claim it
+        let claim_pending =
+            offer.late_claim_until > now && offer.paid_buyer.is_some() && offer.paid_buyer.as_ref() != Some(&buyer);
+        if offer.paid_buyer.as_ref() == Some(&buyer) {
+            offer.late_claim_until = 0;
+        }
+        let mut bond_back = 0i128;
+        if offer.bond > 0 && !claim_pending {
+            bond_back = offer.bond;
+            offer.bond = 0;
+        }
         put_offer(&env, &offer);
         let fee = offer.amount * (cfg.fee_bps as i128) / 10_000;
         let payout = offer.amount - fee;
@@ -494,6 +644,10 @@ impl OtcEscrow {
             tk.transfer(&env.current_contract_address(), &cfg.fee_recipient, &fee);
         }
         tk.transfer(&env.current_contract_address(), &buyer, &payout);
+        if bond_back > 0 {
+            tk.transfer(&env.current_contract_address(), &offer.seller, &bond_back);
+            BondReturned { id, seller: offer.seller.clone(), amount: bond_back }.publish(&env);
+        }
         bump_instance(&env);
         OfferFulfilled {
             id,
@@ -590,11 +744,17 @@ impl OtcEscrow {
         fee_recipient: Address,
         min_try_kurus: u64,
         max_try_kurus: u64,
+        proof_window: u64,
+        bond_bps: u32,
+        late_claim_window: u64,
     ) -> Result<(), Error> {
         let mut cfg = config(&env)?;
         cfg.admin.require_auth();
         if fee_bps > MAX_FEE_BPS {
             return Err(Error::InvalidFee);
+        }
+        if bond_bps > MAX_BOND_BPS {
+            return Err(Error::InvalidBond);
         }
         cfg.verifier = verifier;
         cfg.image_id = image_id;
@@ -604,6 +764,9 @@ impl OtcEscrow {
         cfg.fee_recipient = fee_recipient;
         cfg.min_try_kurus = min_try_kurus;
         cfg.max_try_kurus = max_try_kurus;
+        cfg.proof_window = proof_window;
+        cfg.bond_bps = bond_bps;
+        cfg.late_claim_window = late_claim_window;
         env.storage().instance().set(&DataKey::Config, &cfg);
         Ok(())
     }
@@ -624,6 +787,91 @@ impl OtcEscrow {
 }
 
 // ───────────────────────────── internals ─────────────────────────────
+
+/// Clear the lock. A payment declared under it either dies with the lock (the buyer released it
+/// themselves) or turns into a late-claim right for `late_claim_window` (someone else released it).
+fn release_lock(offer: &mut Offer, cfg: &Config, now: u64, by_buyer: bool) {
+    if offer.paid_declared_at != 0 && offer.paid_buyer.is_some() {
+        if by_buyer {
+            offer.paid_declared_at = 0;
+            offer.paid_buyer = None;
+            offer.paid_locked_at = 0;
+            offer.late_claim_until = 0;
+        } else {
+            offer.late_claim_until = now + cfg.late_claim_window;
+        }
+    }
+    offer.buyer = None;
+    offer.locked_at = 0;
+    offer.lock_expires_at = 0;
+}
+
+/// Verify a receipt against the router and check the committed values against the offer; on success the
+/// nullifier is recorded (a statement row settles at most once, across all offers).
+fn verify_and_consume(
+    env: &Env,
+    cfg: &Config,
+    offer: &Offer,
+    locked_at: u64,
+    public_values: &Bytes,
+    proof: &Bytes,
+) -> Result<PaymentClaim, Error> {
+    // 1. cryptographic verification: RISC Zero Groth16 receipt via the verifier router
+    //    (native BN254 pairing). journal_digest = sha256(journal) per RISC Zero's ReceiptClaim.
+    let journal_digest: BytesN<32> = env.crypto().sha256(public_values).into();
+    let res = env.try_invoke_contract::<(), soroban_sdk::Error>(
+        &cfg.verifier,
+        &Symbol::new(env, "verify"),
+        vec![
+            env,
+            proof.into_val(env),
+            cfg.image_id.into_val(env),
+            journal_digest.into_val(env),
+        ],
+    );
+    if !matches!(res, Ok(Ok(()))) {
+        return Err(Error::ProofInvalid);
+    }
+
+    // 2. business checks on the committed values
+    let claim = decode_public_values(env, public_values)?;
+    if claim.offer_id != offer.id {
+        return Err(Error::WrongOffer);
+    }
+    let keys: Vec<BytesN<32>> = env
+        .storage()
+        .instance()
+        .get(&DataKey::DkimKeys)
+        .unwrap_or(Vec::new(env));
+    if !keys.contains(&claim.dkim_key_hash) {
+        return Err(Error::DkimKeyNotTrusted);
+    }
+    if claim.domain_hash != cfg.domain_hash {
+        return Err(Error::DomainMismatch);
+    }
+    if claim.payee_hash != offer.payee_hash {
+        return Err(Error::PayeeMismatch);
+    }
+    if claim.amount_kurus < offer.try_amount_kurus {
+        return Err(Error::AmountTooLow);
+    }
+    let now = env.ledger().timestamp();
+    let pay_day = days_from_yyyymmdd(claim.date_yyyymmdd).ok_or(Error::InvalidPublicValues)?;
+    let lock_day = ((locked_at + ISTANBUL_OFFSET) / 86_400) as i64;
+    let today = ((now + ISTANBUL_OFFSET) / 86_400) as i64;
+    if pay_day < lock_day || pay_day > today {
+        return Err(Error::DateOutOfWindow);
+    }
+    let nkey = DataKey::Nullifier(claim.nullifier.clone());
+    if env.storage().persistent().has(&nkey) {
+        return Err(Error::NullifierUsed);
+    }
+    env.storage().persistent().set(&nkey, &offer.id);
+    env.storage()
+        .persistent()
+        .extend_ttl(&nkey, OFFER_TTL_THRESHOLD, OFFER_TTL_EXTEND);
+    Ok(claim)
+}
 
 fn config(env: &Env) -> Result<Config, Error> {
     env.storage()

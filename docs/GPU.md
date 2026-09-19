@@ -1,15 +1,15 @@
-# GPU proving runbook — rent a box, prove in 30 seconds
+# GPU proving runbook — rent a box, prove in 15 seconds
 
-Everything needed to go from "no GPU" to a running zkOTC prover in **about 4 minutes of wall time** on a freshly
+Everything needed to go from "no GPU" to a running zkOTC prover in **about 6 minutes of wall time** on a freshly
 rented machine, without repeating the detours of the first attempt (which took an afternoon). Measured on an
-RTX 4090: a real e-dekont proves in **30 s** end to end (STARK ~10 s on the GPU, Groth16 wrap 19 s), versus
-84 minutes on the 4-vCPU Azure VM.
+RTX 4090: a real e-dekont proves in **15 s** through the API (STARK 4.8 s, witness 2–4 s, Groth16 2.3 s on the
+GPU with the ICICLE-snark worker), versus 84 minutes on the 4-vCPU Azure VM.
 
 Two moving parts:
 
 | where | what | why |
 |---|---|---|
-| **artifact host** = our Azure VM (`kaleab@4.239.243.216`, `~/gpu-artifacts/`) | `g16/` the reference Groth16 prover files (2.5 GB, unpacked once from `risczero/risc0-groth16-prover:v2025-04-03.1`) and `bin/latest/` prebuilt `zkotc` + `zkotc-server` | a fresh box downloads these in ~2 min instead of compiling for 30 |
+| **artifact host** = our Azure VM (`kaleab@4.239.243.216`, `~/gpu-artifacts/`) | `bin/latest/` prebuilt `zkotc` + `zkotc-server`; `icicle/` the ICICLE-snark GPU Groth16 worker (12 MB, built once by `scripts/gpu/build-icicle.sh`); `zkey/` the risc0 `stark_verify` zkey + witness graph (3.9 GB); `g16/` the reference CPU prover files (2.5 GB, fallback engine) | a fresh box downloads ~4 GB in ~3 min instead of compiling for 30 |
 | **GPU box** = any rented CUDA container/VM, Ubuntu 24.04 | `scripts/gpu/bootstrap.sh` verifies checksums and starts `zkotc-server` | ephemeral; nothing on it needs saving |
 
 `scripts/gpu/deploy.sh` (run on your Mac) ties them together. One-time: copy `scripts/gpu/.env.example` to
@@ -44,8 +44,9 @@ What it does, in order (each step prints its elapsed time):
    appending blindly corrupts your key),
 3. `rsync` of `~/gpu-artifacts` from the artifact host straight to the box (2.8 GB, ~2 min at 25 MB/s),
 4. runs `bootstrap.sh` on the box under `nohup`, polling a status file (never hold a long ssh pipe: it hangs),
-   which checks the SHA-256 of every file, installs `libgmp10`, and starts `zkotc-server` with
-   `GROTH16_NATIVE_DIR=~/g16 SUCCINCT_CACHE_DIR=~/zkotc/cache` and your token / CORS settings,
+   which checks the SHA-256 of every file, installs `libgmp10`, and starts `zkotc-server` with the Groth16 engine
+   from `ENGINE=` in your `.env` (`icicle`: `GROTH16_ICICLE_DIR` + `GROTH16_ZKEY_DIR`; `native`: `GROTH16_NATIVE_DIR`),
+   `SUCCINCT_CACHE_DIR=~/zkotc/cache` and your token / CORS settings,
 5. prints the public URL: Vast maps container port `10100` to a public port (`VAST_TCP_PORT_10100`; ports 8080,
    8384, 6006 and 1111 belong to Vast's own portal, do not use them), and `GET /info` with the box's `image_id`,
 6. `--switch`: compares that image id with the escrow's `config.image_id`; if different, runs `set_config` on the
@@ -60,8 +61,8 @@ prover: http://98.191.113.12:11267
 info:   {"image_id":"0x3e55…","prover_mode":"groth16","dkim_source":"dns","public_values_len":152}
 job 8296cd79-…: queued
    2.1s proving
-  32.1s done
-OK in 32.1s — seal 260 B, cycles 6291456, amount 168150 kuruş on 20260905
+  15.0s done
+OK in 15.0s — seal 260 B, cycles 2621440, amount 168150 kuruş on 20260905
 ```
 
 **Why the image id matters.** The guest image id is *not* reproducible across machines (RISC Zero only guarantees
@@ -75,7 +76,8 @@ whichever prover the app uses must be the one the escrow points at.
 - Web app: `NEXT_PUBLIC_PROVER_URL=http://<ip>:<port>` (`--switch` writes it). Plain HTTP is fine from
   `http://localhost:3000`; from an HTTPS site you would need a TLS front (`cloudflared` is preinstalled on Vast
   boxes: `cloudflared tunnel --url http://localhost:10100` gives a temporary HTTPS URL).
-- CLI on the box: `GROTH16_NATIVE_DIR=~/g16 ~/zkotc/bin/zkotc prove --eml x.eml --iban TR… --name "AD SOYAD" --offer-id N --dns --out proof.json`
+- CLI on the box: `GROTH16_ICICLE_DIR=~/gpu-artifacts/icicle GROTH16_ZKEY_DIR=~/gpu-artifacts/zkey ~/zkotc/bin/zkotc prove --eml x.eml --iban TR… --name "AD SOYAD" --offer-id N --dns --out proof.json`
+  (the CLI starts its own ICICLE worker, so add ~2 s; the server keeps one warm)
 - Logs: `~/zkotc/server.log` (no e-mail bodies), `~/zkotc/bootstrap.log`. Restart the server:
   `bash ~/zkotc/bootstrap.sh` (keeps the artifacts, re-verifies checksums, restarts).
 
@@ -89,6 +91,17 @@ needed) and compiles with `--features cuda` (~30 min on 32 vCPU: `nvcc` compiles
 for the box's GPU plus PTX for newer ones). `--publish` copies the two binaries to the artifact host under
 `bin/<git>-<imageid8>/` and moves `bin/latest` there, so the next rental is back to 4 minutes. Build on the oldest
 GPU architecture you intend to rent (kernels built on a 4090 = `sm_89` run on Ada and newer only).
+
+### Groth16 engines
+| engine | how | wrap time | needs |
+|---|---|---|---|
+| `icicle` (default) | ICICLE-snark worker process on the GPU, witness in-process | ~5 s (2.3 s proof warm, 4 s cold) | `icicle/` + `zkey/` artifacts, ≥ 10 GB VRAM free |
+| `native` | reference CPU prover from the risc0 Docker image, run natively | ~19 s (witness 7 s, prover 12 s on 32 threads) | `g16/` artifacts, ≥ 16 vCPU |
+| risc0's CUDA wrap | — | crashes on 3.0.x ([#3785](https://github.com/risc0/risc0/issues/3785)) | never enable |
+
+The ICICLE worker is rebuilt only when its source changes: `bash scripts/gpu/build-icicle.sh` on a CUDA box (≈10 min),
+then `deploy.sh "<ssh>" --publish`. The upstream CLI busy-loops if its stdin closes; `zkotc-server` sends it `exit`
+and it is bound to the server with `PR_SET_PDEATHSIG`, so a server crash cannot leave a worker spinning on the GPU.
 
 ## 5. Tear down
 
@@ -111,6 +124,9 @@ Cost: 4090 at $0.36/h ≈ $0.003 per proof; the afternoon that produced this run
 | Proof finished but the ssh session hung 10 min, hiding the timings | Long jobs run under `nohup` with logs; the scripts poll files instead of holding pipes |
 | Instance stuck in "Loading" for 14 min (host DNS broken) | Destroy after 5 min and rent another host; check the status text on the card |
 | `zsh: == not found` in an ad-hoc command | `=cmd` is a zsh expansion; quote it or use bash |
+| Set `NVCC_APPEND_FLAGS` for a rebuild and cargo recompiled every CUDA kernel (25 min) | Never change nvcc flags between builds; `bootstrap.sh --build` unsets them |
+| `pkill -f <name>` killed the SSH session that was running it | `pkill -x`, or match on something not in your own command line |
+| ICICLE-snark kept spinning at 100% CPU after its stdin closed | It only stops on an `exit` command; the server does that and uses PDEATHSIG |
 | Escrow rejected the box's proofs: wrong image id | `deploy.sh --switch` (or `set_config --image_id`), see §2 |
 
 ## 7. Other providers

@@ -7,9 +7,11 @@
 #   bash ~/zkotc/bootstrap.sh --no-serve # skip starting the server
 #
 # Inputs (put in place by deploy.sh):
-#   ~/gpu-artifacts/g16/         reference Groth16 prover files (stark_verify, prover, .cs, .dat, .pk.dmp + SHA256SUMS)
+#   ~/gpu-artifacts/icicle/      ICICLE-snark GPU Groth16 worker + libs (ENGINE=icicle, default)
+#   ~/gpu-artifacts/zkey/        stark_verify_final.zkey + stark_verify_graph.bin (risc0 groth16 component)
+#   ~/gpu-artifacts/g16/         reference CPU Groth16 prover files (ENGINE=native fallback)
 #   ~/gpu-artifacts/bin/latest/  prebuilt zkotc + zkotc-server (+ SHA256SUMS, BUILD.txt)
-#   ~/zkotc/gpu.env              PORT, PROVER_TOKEN, CORS_ORIGIN, DKIM_DNS, MAX_JOBS_QUEUED
+#   ~/zkotc/gpu.env              ENGINE, PORT, PROVER_TOKEN, CORS_ORIGIN, DKIM_DNS, MAX_JOBS_QUEUED
 # Outputs: ~/zkotc/bin/{zkotc,zkotc-server}, ~/zkotc/server.log, ~/zkotc/bootstrap.log, ~/zkotc/bootstrap.status (OK|FAIL)
 #
 # Lessons baked in (see docs/GPU.md): never use the CUDA Groth16 wrap of risc0 3.0.x (it crashes: GROTH16_NATIVE_DIR
@@ -45,11 +47,21 @@ PKGS="libgmp10 time curl rsync"
 missing=""; for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
 if [ -n "$missing" ]; then apt-get -qq update >/dev/null; apt-get -qq install -y $missing >/dev/null; echo "installed:$missing"; fi
 
-step "Groth16 reference prover files"
-[ -f "$A/g16/SHA256SUMS" ] || { echo "missing $A/g16 (deploy.sh syncs it from the artifact host)"; exit 1; }
-(cd "$A/g16" && sha256sum -c --quiet SHA256SUMS) && echo "g16 checksums OK"
-if [ -d "$HOME/g16" ] && [ ! -L "$HOME/g16" ]; then mv "$HOME/g16" "$HOME/g16.manual"; fi
-ln -sfn "$A/g16" "$HOME/g16"
+ENGINE=$(grep -s '^ENGINE=' "$Z/gpu.env" | cut -d= -f2); ENGINE=${ENGINE:-icicle}
+if [ "$ENGINE" = icicle ]; then
+  step "Groth16 engine: icicle (GPU) — ICICLE-snark worker + risc0 zkey/graph"
+  [ -f "$A/icicle/SHA256SUMS" ] || { echo "missing $A/icicle (build it once with scripts/gpu/build-icicle.sh, then --publish)"; exit 1; }
+  (cd "$A/icicle" && sha256sum -c --quiet SHA256SUMS) && echo "icicle checksums OK"
+  for f in stark_verify_final.zkey stark_verify_graph.bin; do [ -f "$A/zkey/$f" ] || { echo "missing $A/zkey/$f"; exit 1; }; done
+  chmod +x "$A/icicle/icicle-snark"
+  pkill -x icicle-snark 2>/dev/null || true
+else
+  step "Groth16 engine: native (CPU) — reference prover files"
+  [ -f "$A/g16/SHA256SUMS" ] || { echo "missing $A/g16 (deploy.sh syncs it from the artifact host)"; exit 1; }
+  (cd "$A/g16" && sha256sum -c --quiet SHA256SUMS) && echo "g16 checksums OK"
+  if [ -d "$HOME/g16" ] && [ ! -L "$HOME/g16" ]; then mv "$HOME/g16" "$HOME/g16.manual"; fi
+  ln -sfn "$A/g16" "$HOME/g16"
+fi
 
 pkill -x zkotc-server 2>/dev/null && sleep 1 || true   # a running server holds the binary ("Text file busy")
 install_bin() { for b in zkotc zkotc-server; do install -m 755 "$1/$b" "$Z/bin/$b.new" && mv -f "$Z/bin/$b.new" "$Z/bin/$b"; done; }
@@ -62,10 +74,10 @@ if [ "$BUILD" = 1 ]; then
   export PATH=$HOME/.cargo/bin:$HOME/.risc0/bin:$PATH
   [ -x "$HOME/.risc0/bin/rzup" ] || curl -sL https://risczero.com/install | bash >/dev/null 2>&1
   rustup toolchain list | grep -q '^risc0' || rzup install rust
-  step "cargo build --release --features cuda (nvcc kernels for this GPU + PTX; ~30 min on 32 vCPU)"
-  CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d '.')
-  export NVCC_APPEND_FLAGS="${NVCC_APPEND_FLAGS:--gencode arch=compute_${CC},code=[sm_${CC},compute_${CC}]}"
-  echo "NVCC_APPEND_FLAGS=$NVCC_APPEND_FLAGS"
+  step "cargo build --release --features cuda (first time ~30 min on 32 vCPU: nvcc kernels for this GPU + PTX; later builds incremental)"
+  # risc0 compiles the kernels with -arch=native (SASS for this GPU + PTX). Do NOT set NVCC_APPEND_FLAGS
+  # between builds: cargo tracks it and would recompile every kernel.
+  unset NVCC_APPEND_FLAGS NVCC_PREPEND_FLAGS
   ( cd "$Z/prover" && cargo build --release --features cuda 2>&1 | grep -E "Compiling risc0|Compiling zkotc|Finished|^error|warning: unused" )
   install_bin "$Z/prover/target/release"
   echo "built $(git -C "$Z" rev-parse --short HEAD 2>/dev/null || echo '?')"
@@ -82,7 +94,8 @@ if [ "$SERVE" = 1 ]; then
   step "start zkotc-server"
   [ -f "$Z/gpu.env" ] || { echo "missing $Z/gpu.env"; exit 1; }
   set -a; . "$Z/gpu.env"; set +a
-  export PORT=${PORT:-10100} GROTH16_NATIVE_DIR=$HOME/g16 SUCCINCT_CACHE_DIR=$Z/cache RUST_LOG=${RUST_LOG:-info}
+  export PORT=${PORT:-10100} SUCCINCT_CACHE_DIR=$Z/cache RUST_LOG=${RUST_LOG:-info}
+  if [ "$ENGINE" = icicle ]; then export GROTH16_ICICLE_DIR=$A/icicle GROTH16_ZKEY_DIR=$A/zkey; else export GROTH16_NATIVE_DIR=$HOME/g16; fi
   nohup "$Z/bin/zkotc-server" > "$Z/server.log" 2>&1 &
   for _ in $(seq 1 30); do curl -sf "localhost:$PORT/info" >/dev/null 2>&1 && break; sleep 1; done
   curl -sf "localhost:$PORT/info" || { echo "server did not come up:"; tail -20 "$Z/server.log"; exit 1; }

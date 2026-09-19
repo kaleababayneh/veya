@@ -10,7 +10,8 @@ SP1-era deployments (superseded 2026-09-08): see git tag `sp1-backend`.
 ## RISC Zero backend (current, 2026-09-08)
 | alias | what | contract id |
 |---|---|---|
-| otc-escrow | escrow calling the RISC Zero router; image_id 9ec8ddc3193d4b3a0a6ce64efbdbbf07ddf8f23e0ddc943db130f64259087cbf | CBVLRH22A6QWM53NDMYKYTSNS5M7472IPLRJTSWCMU4WHBCX6JBZ5ERW |
+| **otc-escrow-v4** (current, 2026-09-09) | escrow with `declare_paid` protection + 5 % seller bond + late `claim_bond`; image_id eaf273e6fcbbbe98ce40febd9583beb50ef1ee6f4fb3cd791239993921ae6e58 (GPU prover build); lock 3600 s, proof window 7200 s, late-claim window 3 d, fee 25 bps | CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV |
+| otc-escrow (v3, superseded 2026-09-09; offer #1 cancelled) | escrow calling the RISC Zero router; image_id 9ec8ddc3193d4b3a0a6ce64efbdbbf07ddf8f23e0ddc943db130f64259087cbf | CBVLRH22A6QWM53NDMYKYTSNS5M7472IPLRJTSWCMU4WHBCX6JBZ5ERW |
 | risc0 router | NethermindEth/stellar-risc0-verifier VerifierRouter | CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG |
 | risc0 groth16 verifier | params v3.0.0 (control root a54dc85a…), selector 73c457ba | CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI |
 | emergency stop | wraps the verifier | CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4 |

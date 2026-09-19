@@ -23,7 +23,7 @@ consider having the buyer put `ZKOTC-<offer id>` in the transfer description for
 ## 1. Trust & safety (weeks 2–6)
 | # | Task |
 |---|---|
-| 1.1 | **Close the trust gap**: on-chain `declare_paid(id)` by the buyer freezes `unlock`/`cancel` for a proof window (e.g. 45 min); seller bond slashed if they withdraw against a valid late proof; dispute log via events. |
+| 1.1 | ~~**Close the trust gap**~~ **Done 2026-09-09 (escrow v4):** `declare_paid` extends the lock to ≥ `proof_window` (2 h); 5 % seller bond, `claim_bond` for a valid proof within 3 days of a release, `withdraw_bond` afterwards; takeover of a stale lock counts as a release; events `PaymentDeclared`/`BondSlashed`/`BondReturned`. Open: buyer-side bond or per-wallet lock limit against declare-without-paying griefing. |
 | 1.2 | **DKIM key registry** contract: `(domain_hash → [key_hash, valid_from, valid_to])`, admin via timelock/multisig, daily monitor of `msg2._domainkey.ileti.ziraatbank.com.tr` (and future banks). |
 | 1.3 | **Prover privacy**: run `zkotc-server` inside a TEE (AWS Nitro or SGX, which you already work with) with remote attestation shown in the UI; publish a Docker image so buyers can self-host. Boundless is not private — use it only for users who opt in. |
 | 1.4 | **DKIM verifier assurance**: fuzz + differential tests against dkimpy over a corpus (RFC 6376 vectors, folded headers, `l=`, multiple signatures, relaxed/relaxed). Property tests for the statement parser. |

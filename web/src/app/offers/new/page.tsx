@@ -27,7 +27,11 @@ export default function NewOffer() {
   }, []);
 
   const feeBps = cfg ? Number(cfg.fee_bps) : 25;
+  const bondBps = cfg ? Number(cfg.bond_bps) : 500;
   const t = TOKENS.find((x) => x.address === token);
+  const amountNum = Number(amount) || 0;
+  const bondNum = Math.ceil(amountNum * bondBps) / 10000;
+  const fmtN = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 7 });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +83,7 @@ export default function NewOffer() {
                 ))}
               </select>
             </Field>
-            <Field label={`Amount (${t?.symbol ?? ""})`} hint="Deposited into escrow now.">
+            <Field label={`Amount (${t?.symbol ?? ""})`} hint={`Deposited into escrow now, plus a ${bondBps / 100}% bond (${fmtN(bondNum)} ${t?.symbol ?? ""}) that comes back when the offer completes or is withdrawn.`}>
               <input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" required />
             </Field>
           </div>
@@ -105,7 +109,8 @@ export default function NewOffer() {
             <input type="checkbox" className="mt-1" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span>
               I understand my IBAN and name will be publicly visible on Stellar testnet, and that the escrow releases automatically when a
-              buyer proves a payment of at least the TRY amount to this IBAN. Protocol fee: {feeBps / 100}% of the token amount.
+              buyer proves a payment of at least the TRY amount to this IBAN. Protocol fee: {feeBps / 100}% of the token amount. My {bondBps / 100}% bond is
+              forfeited only if I withdraw after a buyer declared a payment and they then prove it within {cfg ? Math.round(Number(cfg.late_claim_window) / 86400) : 3} days.
             </span>
           </label>
         </Card>
@@ -121,7 +126,7 @@ export default function NewOffer() {
               <Spinner /> Confirm in wallet…
             </>
           ) : address ? (
-            `Deposit ${amount || "0"} ${t?.symbol ?? ""} and publish offer`
+            `Deposit ${fmtN(amountNum)} + ${fmtN(bondNum)} bond ${t?.symbol ?? ""} and publish offer`
           ) : (
             "Connect wallet to continue"
           )}

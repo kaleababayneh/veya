@@ -5,7 +5,7 @@
 #
 # Flags:
 #   --build          compile this working tree on the box (needs nvcc; ~30 min) instead of using prebuilt binaries
-#   --publish        after --build: store the binaries on the artifact host so the next rental skips the build
+#   --publish        (implies --build; a no-op when up to date) store the binaries and ~/gpu-artifacts/icicle on the artifact host
 #   --switch         point the testnet escrow (set_config image_id) and web/.env.local at this box
 #   --test <eml>     submit an e-dekont through the box's API and time it (needs TEST_IBAN/TEST_NAME in scripts/gpu/.env)
 #
@@ -29,12 +29,11 @@ done
 BUILD=0; PUBLISH=0; SWITCH=0; TEST_EML=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --build) BUILD=1 ;; --publish) PUBLISH=1 ;; --switch) SWITCH=1 ;;
+    --build) BUILD=1 ;; --publish) PUBLISH=1; BUILD=1 ;; --switch) SWITCH=1 ;;
     --test) TEST_EML=${2:?--test needs a .eml path}; shift ;;
     *) echo "unknown flag $1"; exit 2 ;;
   esac; shift
 done
-[ "$PUBLISH" = 1 ] && [ "$BUILD" = 0 ] && { echo "--publish requires --build"; exit 2; }
 
 T0=$(date +%s)
 step() { echo; echo "== [$(( $(date +%s) - T0 ))s] $*"; }
@@ -53,8 +52,12 @@ step "authorizing the artifact host's key on the box (appended on its own line �
 AK=$(art 'cat ~/.ssh/id_ed25519.pub')
 box "mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && (grep -qF '$AK' ~/.ssh/authorized_keys || printf '\n%s\n' '$AK' >> ~/.ssh/authorized_keys) && sed -i '/^\$/d' ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 
-step "syncing artifacts $ARTIFACT_HOST:~/$ARTIFACT_DIR → box (g16 prover files 2.5 GB + prebuilt binaries)"
-art "rsync -a --info=stats1 -e 'ssh -p $PORT_SSH -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR' ~/$ARTIFACT_DIR/ $TARGET:~/gpu-artifacts/" | grep -E "transferred|Total transferred|speedup" || true
+ENGINE=${ENGINE:-icicle}
+case "$ENGINE" in icicle) DIRS="bin icicle zkey" ;; native) DIRS="bin g16" ;; *) echo "ENGINE must be icicle or native"; exit 2 ;; esac
+step "syncing artifacts $ARTIFACT_HOST:~/$ARTIFACT_DIR/{$DIRS} → box (engine $ENGINE; ~4 GB the first time)"
+for d in $DIRS; do
+  art "rsync -aL --info=stats1 -e 'ssh -p $PORT_SSH -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR' ~/$ARTIFACT_DIR/$d/ $TARGET:~/gpu-artifacts/$d/" | grep -E "Total transferred" | sed "s/^/   $d: /" || true
+done
 
 if [ "$BUILD" = 1 ]; then
   step "syncing sources (this working tree) → box:~/zkotc"
@@ -66,6 +69,7 @@ step "bootstrap"
 box 'mkdir -p ~/zkotc'
 scp -q -P "$PORT_SSH" -o LogLevel=ERROR scripts/gpu/bootstrap.sh "$TARGET:~/zkotc/bootstrap.sh"
 box "cat > ~/zkotc/gpu.env" <<EOF
+ENGINE=$ENGINE
 PORT=$PORT
 PROVER_TOKEN=$PROVER_TOKEN
 CORS_ORIGIN=$CORS_ORIGIN
@@ -95,6 +99,9 @@ if [ "$PUBLISH" = 1 ]; then
   step "publishing binaries to $ARTIFACT_HOST:~/$ARTIFACT_DIR/bin"
   VER="$(git rev-parse --short HEAD)-${IMG:2:8}"
   art "mkdir -p ~/$ARTIFACT_DIR/bin/$VER && rsync -a -e 'ssh -p $PORT_SSH -o LogLevel=ERROR' $TARGET:~/zkotc/prover/target/release/zkotc $TARGET:~/zkotc/prover/target/release/zkotc-server ~/$ARTIFACT_DIR/bin/$VER/ && cd ~/$ARTIFACT_DIR/bin/$VER && sha256sum zkotc zkotc-server > SHA256SUMS && printf 'git=%s\nimage_id=%s\nbuilt=%s\nrisc0=3.0.6 ubuntu=24.04 glibc=2.39\n' '$(git rev-parse --short HEAD)' '$IMG' '$(date -u +%Y-%m-%dT%H:%MZ)' > BUILD.txt && ln -sfn $VER ../latest && ls -la"
+  if box 'test -f ~/gpu-artifacts/icicle/SHA256SUMS'; then
+    art "rsync -a -e 'ssh -p $PORT_SSH -o LogLevel=ERROR' $TARGET:~/gpu-artifacts/icicle/ ~/$ARTIFACT_DIR/icicle/ && echo '   icicle worker published'"
+  fi
 fi
 
 step "escrow image id check"

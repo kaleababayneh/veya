@@ -36,19 +36,23 @@ Groth16 wrap in Docker. If the wrap fails, retry it without redoing the STARK: `
 That is far too slow for users; the VM is fine as a build/verification box. **Production proving runs on a GPU host (below).**
 Full e-dekont proof on the VM: 84 min (STARK) + 352 s (Docker Groth16 wrap on 4 vCPU).
 
-## GPU host (Vast.ai RTX 4090) — 30 s per proof
-Measured 2026-09-09 on a Vast.ai container (RTX 4090 24 GB, 32 vCPU EPYC 7742, driver 595, CUDA 12.8, Ubuntu 24.04, $0.36/h):
+## GPU host (Vast.ai RTX 4090) — 15 s per proof
+Measured 2026-09-09 on a Vast.ai container (RTX 4090 24 GB, 32 vCPU EPYC 7742, driver 595, CUDA 12.8, Ubuntu 24.04, $0.36/h),
+`zkotc-server` with the `icicle` engine, warm worker:
 
 | phase | time |
 |---|---|
-| execute (no proof) | 0.45 s |
-| STARK + succinct receipt (GPU) | ~10 s |
+| execute (no proof) | 0.3 s |
+| STARK + succinct receipt (GPU), 2.6M cycles, 3 segments | 4.8 s |
 | identity_p254 (GPU) | 0.3 s |
-| Groth16 witness (`stark_verify`, CPU) | 7.1 s |
-| Groth16 prover (CPU, 32 threads) | 11.6 s |
-| **`zkotc prove` wall, cold** | **30.1 s** (8.6 GB RSS) |
+| Groth16 witness (`circom-witnesscalc` in-process, graph cached) | 2–4 s |
+| Groth16 prover (ICICLE-snark worker, GPU; 4 s cold) | 2.3 s |
+| **`POST /jobs` → `done`** | **15 s** (2 s of that is the client's poll interval) |
 
-**Why the wrap is on the CPU:** with `--features cuda`, risc0 3.0.5/3.0.6 wraps to Groth16 with its CUDA/sppark prover, which
+Engines (`docs/GPU.md`): `icicle` (default: `GROTH16_ICICLE_DIR` + `GROTH16_ZKEY_DIR`) or `native` (`GROTH16_NATIVE_DIR`,
+reference CPU prover: witness 7 s + prover 12 s → 30 s per proof). Guest history: 5.19M → 2.06M cycles (see git log da7d23b).
+
+**Why not risc0's CUDA wrap:** with `--features cuda`, risc0 3.0.5/3.0.6 wraps to Groth16 with its CUDA/sppark prover, which
 crashes deterministically (`sppark_error: an illegal memory access`, [risc0#3785](https://github.com/risc0/risc0/issues/3785);
 also produced invalid proofs at opt-level ≥ 1, [#3760](https://github.com/risc0/risc0/issues/3760)). The fix is only in the
 unreleased 5.0.0-rc.1, whose verifier parameters the Stellar router does not carry. So `zkotc-host` has a `native-groth16`

@@ -219,7 +219,14 @@ mod icicle {
 
     impl Drop for Worker {
         fn drop(&mut self) {
-            let _ = writeln!(self.stdin, "exit");
+            // ask nicely first (the CLI busy-loops on EOF, so never just close stdin), then make sure
+            let _ = writeln!(self.stdin, "exit").and_then(|_| self.stdin.flush());
+            for _ in 0..20 {
+                if matches!(self.child.try_wait(), Ok(Some(_))) {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
             let _ = self.child.kill();
             let _ = self.child.wait();
         }

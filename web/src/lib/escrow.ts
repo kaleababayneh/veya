@@ -90,4 +90,11 @@ export const ERROR_HELP: Record<string, string> = {
   WrongOffer: "This proof was generated for a different offer.",
   InvalidIban: "IBAN must be a Turkish IBAN: TR + 24 digits.",
   AmountOutOfRange: "The TRY amount is outside the allowed range for this testnet deployment.",
+  AlreadyDeclared: "You already declared this payment; continue with the e-dekont upload.",
+  LockExpired: "Your reservation has ended. Do not send money now; reserve again first.",
+  LateClaimPending: "A previous buyer declared a payment on this offer and may still claim the seller's bond; you cannot declare on it until that window closes.",
+  LateClaimClosed: "There is no open bond claim for your wallet on this offer (none declared, or the claim window has passed).",
+  BondHeld: "The bond stays in escrow until the previous buyer's claim window has passed.",
+  NoBond: "No bond is held for this offer.",
+  InvalidBond: "The bond rate must be at most 50%.",
 };
