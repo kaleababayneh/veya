@@ -10,7 +10,7 @@ SP1-era deployments (superseded 2026-09-08): see git tag `sp1-backend`.
 ## RISC Zero backend (current, 2026-09-08)
 | alias | what | contract id |
 |---|---|---|
-| **otc-escrow-v5** (current, 2026-09-10) | **P2P market**: maker ads (liquidity + price + per-trade limits + encrypted payee details) and per-trade reservations; `declare_paid`, per-reservation bond slices, `claim_bond`/`reclaim_bond`, wallet-bound payment reference; image_id 89f97cff…3775; lock 3600 s, proof window 7200 s, bond 5 %, late-claim 3 d, fee 25 bps, ₺50–₺5000, ≤5 reservations/ad, ≤2 active/buyer; reveal_pubkey 7058347fc86ef5ac89b17f93f2e9ff3d0f828c235921fd3c34860b651d29a95c (secret in web/.env.local `REVEAL_SECRET_KEY`) | CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG |
+| **otc-escrow-v5** (current, 2026-09-10) | **P2P market**: maker ads (liquidity + price + per-trade limits + encrypted payee details) and per-trade reservations; `declare_paid`, per-reservation bond slices, `claim_bond`/`reclaim_bond`, wallet-bound payment reference; image_id 64c9d9d7…d4d0 (set_config tx ef13178d…, 2026-09-12; was 89f97cff…3775); **upgraded in place 2026-09-12** to wasm 07be6c659aa21bbcb695419aaa8f2805236583a2cfa60ec21326e22e2907c0f0 (payment reference is one token `ZKOTC<id><hex6>`; reservations #1–#7 were made with the spaced form and #7 settled with it before the upgrade); lock 3600 s, proof window 7200 s, bond 5 %, late-claim 3 d, fee 25 bps, ₺50–₺5000, ≤5 reservations/ad, ≤2 active/buyer; reveal_pubkey 7058347fc86ef5ac89b17f93f2e9ff3d0f828c235921fd3c34860b651d29a95c (secret in web/.env.local `REVEAL_SECRET_KEY`) | CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG |
 | **otc-escrow-v4** (current, 2026-09-09) | escrow with `declare_paid` protection + 5 % seller bond + late `claim_bond`; image_id eaf273e6fcbbbe98ce40febd9583beb50ef1ee6f4fb3cd791239993921ae6e58 (GPU prover build); lock 3600 s, proof window 7200 s, late-claim window 3 d, fee 25 bps | CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV |
 | otc-escrow (v3, superseded 2026-09-09; offer #1 cancelled) | escrow calling the RISC Zero router; image_id 9ec8ddc3193d4b3a0a6ce64efbdbbf07ddf8f23e0ddc943db130f64259087cbf | CBVLRH22A6QWM53NDMYKYTSNS5M7472IPLRJTSWCMU4WHBCX6JBZ5ERW |
 
@@ -43,3 +43,8 @@ afdbb4c22149d0143c35134b1c12a281ca619c4051191442d03a52cfcbc37fae (ledger 4593532
 same buyer (no payment); the buyer can `unlock` it or the seller cancels after the window (bond then held 3 days).
 
 First real receipt verified on-chain via the router: https://stellar.expert/explorer/testnet/tx/27a5f44d076e05f978237f55110e7212e38decf180f14d5472e14cfd8d8b36d3 (2026-09-08, image id 9ec8ddc3…, fee 222957 stroops).
+
+**2026-09-12 — first full v5 trade through the UI:** reservation #7 on ad #3 (₺50 FAST with the typed reference
+`ZKOTC 7 089340`, Ziraat prints the typed text in front of its own fields), proof 12.8 s on the GPU, settled 17:33 Istanbul.
+Guest image id switched to 64c9d9d7… for the typed-açıklama parser fix (commit e628033), then the escrow was upgraded in
+place (wasm 07be6c65…) for the single-token reference format; the guest is unchanged by that, so the image id stayed.

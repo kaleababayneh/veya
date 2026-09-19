@@ -147,7 +147,7 @@ fn addr_str(a: &Address) -> std::string::String {
 /// Mirrors `zkotc_lib::payment_reference` for the test wallets.
 fn reference_of(addr: &Address, id: u64) -> std::string::String {
     let h = sha(addr_str(addr).as_bytes());
-    std::format!("ZKOTC {id} {:02X}{:02X}{:02X}", h[0], h[1], h[2])
+    std::format!("ZKOTC{id}{:02X}{:02X}{:02X}", h[0], h[1], h[2])
 }
 
 /// Public values for a claim of reservation `rid` by `buyer`.
@@ -579,7 +579,7 @@ fn payment_reference_view_matches_the_library() {
     let view_str = std::str::from_utf8(&raw[..view.len() as usize]).unwrap();
     assert_eq!(view_str, reference_of(&w.buyer, rid));
     assert_eq!(view_str, zkotc_lib::payment_reference(rid, &addr_str(&w.buyer)));
-    assert!(view_str.starts_with("ZKOTC 1 ") && view_str.len() == 14, "{view_str}");
+    assert!(view_str.starts_with("ZKOTC1") && view_str.len() == 12, "{view_str}");
 }
 
 #[test]

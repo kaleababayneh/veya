@@ -411,14 +411,14 @@ mod tests {
 
     #[test]
     fn payment_reference_is_found_as_a_whole_token() {
-        let d = parse(&html(&format!("{OUTGOING_DESC} Açıklama : zkotc 3 a1b2c3 kira"), OUTGOING_SETTLEMENT)).unwrap();
-        assert_eq!(d.aciklama(), Some("zkotc 3 a1b2c3 kira"));
-        assert!(d.contains_reference("ZKOTC 3 A1B2C3"), "case-insensitive, whole token");
-        assert!(!d.contains_reference("ZKOTC 3 A1B2C"), "prefix is not enough");
-        assert!(!d.contains_reference("ZKOTC 4 A1B2C3"));
+        let d = parse(&html(&format!("{OUTGOING_DESC} Açıklama : zkotc3a1b2c3 kira"), OUTGOING_SETTLEMENT)).unwrap();
+        assert_eq!(d.aciklama(), Some("zkotc3a1b2c3 kira"));
+        assert!(d.contains_reference("ZKOTC3A1B2C3"), "case-insensitive, whole token");
+        assert!(!d.contains_reference("ZKOTC3A1B2C"), "prefix is not enough");
+        assert!(!d.contains_reference("ZKOTC4A1B2C3"));
         assert!(!d.contains_reference(""));
         let plain = parse(&html(OUTGOING_DESC, OUTGOING_SETTLEMENT)).unwrap();
-        assert!(!plain.contains_reference("ZKOTC 3 A1B2C3"), "no description → no reference");
+        assert!(!plain.contains_reference("ZKOTC3A1B2C3"), "no description → no reference");
     }
 
     #[test]

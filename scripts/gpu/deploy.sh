@@ -115,10 +115,12 @@ else
   echo "escrow image id $ESC_IMG ≠ box $IMG — proofs from this box are rejected until set_config"
   if [ "$SWITCH" = 1 ]; then
     step "escrow set_config --image_id $IMG (other fields unchanged)"
+    # every set_config parameter (asked from the CLI, so this follows contract upgrades), current values, new image id
+    PARAMS=$(stellar contract invoke --id "$ESCROW_ID" --network testnet --source "$STELLAR_IDENTITY" -- set_config --help 2>/dev/null | grep -oE '^\s+--[a-z_]+' | tr -d ' -' | tr '\n' ' ')
     printf '%s' "$ESC" | python3 -c '
-import json,sys; c=json.load(sys.stdin); img=sys.argv[1][2:]
-print(f"--verifier {c[\"verifier\"]} --image_id {img} --domain_hash {c[\"domain_hash\"]} --lock_duration {c[\"lock_duration\"]} --fee_bps {c[\"fee_bps\"]} --fee_recipient {c[\"fee_recipient\"]} --min_try_kurus {c[\"min_try_kurus\"]} --max_try_kurus {c[\"max_try_kurus\"]}")' "$IMG" > /tmp/zkotc-set-config.args
-    # shellcheck disable=SC2046
+import json, sys
+c = json.load(sys.stdin); c["image_id"] = sys.argv[1][2:]
+print(" ".join(f"--{k} {c[k]}" for k in sys.argv[2].split()))' "$IMG" "$PARAMS" > /tmp/zkotc-set-config.args
     stellar contract invoke --id "$ESCROW_ID" --network testnet --source "$STELLAR_IDENTITY" -- set_config $(cat /tmp/zkotc-set-config.args)
     echo "escrow now accepts $IMG"
   else

@@ -26,7 +26,7 @@
 //! [104..112] date_yyyymmdd        u64, statement date
 //! [112..144] nullifier            unique per statement row
 //! [144..152] reservation_id       u64, bound to this reservation
-//! [152..184] reference_hash       sha256("ZKOTC <reservation id> <6 hex of sha256(claiming wallet)>")
+//! [152..184] reference_hash       sha256("ZKOTC<reservation id><6 hex of sha256(claiming wallet)>")
 //! ```
 #![no_std]
 // Soroban entry points take their arguments flat; constructor/config need more than 7.
@@ -860,7 +860,7 @@ impl OtcEscrow {
     }
 
     /// The text a buyer must type into the FAST description for reservation `id` when claiming with `buyer`:
-    /// `ZKOTC <id> <6 hex of sha256(buyer address)>` (mirrors `zkotc_lib::payment_reference`).
+    /// `ZKOTC<id><6 hex of sha256(buyer address)>`, one token (mirrors `zkotc_lib::payment_reference`).
     pub fn payment_reference(env: Env, id: u64, buyer: Address) -> String {
         let b = payment_reference(&env, id, &buyer);
         let mut raw = [0u8; 40];
@@ -1087,7 +1087,7 @@ fn normalize_iban(env: &Env, iban: &String) -> Result<String, Error> {
     Ok(String::from_bytes(env, &norm))
 }
 
-/// `ZKOTC <id> <HEX6>` where HEX6 = first 3 bytes of sha256(strkey of the wallet), uppercase hex.
+/// `ZKOTC<id><HEX6>` where HEX6 = first 3 bytes of sha256(strkey of the wallet), uppercase hex; no separators.
 fn payment_reference(env: &Env, id: u64, buyer: &Address) -> Bytes {
     let addr = buyer.to_string();
     let n = addr.len() as usize;
@@ -1095,7 +1095,7 @@ fn payment_reference(env: &Env, id: u64, buyer: &Address) -> Bytes {
     addr.copy_into_slice(&mut raw[..n]);
     let h: BytesN<32> = env.crypto().sha256(&Bytes::from_slice(env, &raw[..n])).into();
     let ha = h.to_array();
-    let mut out = Bytes::from_slice(env, b"ZKOTC ");
+    let mut out = Bytes::from_slice(env, b"ZKOTC");
     let mut digits = [0u8; 20];
     let mut k = 20;
     let mut v = id;
@@ -1109,7 +1109,6 @@ fn payment_reference(env: &Env, id: u64, buyer: &Address) -> Bytes {
         v /= 10;
     }
     out.extend_from_slice(&digits[k..]);
-    out.push_back(b' ');
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     for b in &ha[..3] {
         out.push_back(HEX[(b >> 4) as usize]);

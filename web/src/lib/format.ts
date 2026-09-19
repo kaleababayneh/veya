@@ -68,10 +68,10 @@ export function bytesToHex(b: Uint8Array | { toString(enc: string): string }): s
   return String(b.toString("hex"));
 }
 
-/** `ZKOTC <offer id> <6 hex of sha256(wallet)>` — what the buyer types into the FAST description; the
+/** `ZKOTC<offer id><6 hex of sha256(wallet)>`, one token — what the buyer types into the FAST description; the
  *  proof commits its hash and the escrow recomputes it from (offer, claiming wallet). Mirrors
  *  zkotc_lib::payment_reference and the escrow's payment_reference view. */
 export function paymentReference(offerId: bigint | number, buyer: string): string {
   const h = hash(Buffer.from(buyer.trim(), "utf8"));
-  return `ZKOTC ${offerId.toString()} ${Buffer.from(h.subarray(0, 3)).toString("hex").toUpperCase()}`;
+  return `ZKOTC${offerId.toString()}${Buffer.from(h.subarray(0, 3)).toString("hex").toUpperCase()}`;
 }

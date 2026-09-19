@@ -5,7 +5,7 @@
 //! 2. Require the `From:` domain to equal the DKIM `d=` domain.
 //! 3. Extract the `e-dekont.html` attachment from the signed MIME body.
 //! 4. Parse the per-transaction dekont; require an outgoing transfer that prints recipient account/bank/name.
-//! 5. Require the payment reference (`ZKOTC <offer> <code-of-buyer-wallet>`) in the transfer description, so
+//! 5. Require the payment reference (`ZKOTC<offer><code-of-buyer-wallet>`) in the transfer description, so
 //!    the e-mail is bound to the claiming wallet and a stolen `.eml` settles nothing for anyone else.
 //! 6. Emit 184-byte public values (see `PaymentClaim`).
 
@@ -110,11 +110,13 @@ pub fn sha256(b: &[u8]) -> [u8; 32] {
     Sha256::digest(b).into()
 }
 
-/// The reference a buyer must type into the FAST description: `ZKOTC <offer id> <6 hex of sha256(wallet)>`.
+/// The reference a buyer must type into the FAST description: `ZKOTC<offer id><6 hex of sha256(wallet)>`, one
+/// token without spaces (easier to type on a phone; the last six characters are always the wallet part, so ids
+/// of different lengths cannot collide).
 /// Mirrored in the escrow (`payment_reference` view); the proof commits `reference_hash` of it.
 pub fn payment_reference(offer_id: u64, buyer_address: &str) -> String {
     let h = sha256(buyer_address.trim().as_bytes());
-    format!("ZKOTC {offer_id} {}", hex_upper(&h[..3]))
+    format!("ZKOTC{offer_id}{}", hex_upper(&h[..3]))
 }
 
 /// What the guest commits for a reference: sha256 of its folded form (uppercase, Turkish letters folded,

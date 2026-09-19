@@ -55,9 +55,10 @@ fn outgoing_dekont_with_reference_proves() {
     assert_eq!(d.amount_kurus, 5000, "İşlem Tutarı, not the debited total with fees");
     assert_eq!(d.debited_kurus, 5837);
     assert_eq!(d.recipient_name(), Some("KALEAB ABAYNEH GIZAW"));
+    // typed with the spaced format of the time; the format is now one token
     assert_eq!(d.aciklama(), Some("ZKOTC 7 089340"));
-    let expected = payment_reference(7, "GD7LIYDVF6MUAE2OZUJB4DXJU3SIKNUVDDSMMCCXSCMXA6ZIDB7M5WXZ");
-    assert_eq!(expected, "ZKOTC 7 089340");
+    assert_eq!(payment_reference(7, "GD7LIYDVF6MUAE2OZUJB4DXJU3SIKNUVDDSMMCCXSCMXA6ZIDB7M5WXZ"), "ZKOTC7089340");
+    let expected = "ZKOTC 7 089340".to_string();
     let claim = prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 7, attachment: None, reference: expected.clone() }).expect("prove_payment");
     assert_eq!(claim.reference_hash, reference_hash(&expected));
     assert_eq!(claim.amount_kurus, 5000);
@@ -70,7 +71,7 @@ fn incoming_dekont_is_rejected() {
     let Some(eml) = sample("e-dekont-incoming") else { return };
     let d = inspect_dekont(&eml).expect("dekont");
     assert_eq!(d.direction, dekont::Direction::Incoming);
-    assert_eq!(prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 1, attachment: None, reference: "ZKOTC 1 000000".into() }).unwrap_err(), Error::NotOutgoing);
+    assert_eq!(prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 1, attachment: None, reference: "ZKOTC1000000".into() }).unwrap_err(), Error::NotOutgoing);
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn claim_roundtrip() {
 #[test]
 fn payment_reference_format() {
     let r = payment_reference(3, "GCKKGUXAMPLEADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXMK65H");
-    assert!(r.starts_with("ZKOTC 3 ") && r.len() == "ZKOTC 3 ".len() + 6, "{r}");
+    assert!(r.starts_with("ZKOTC3") && r.len() == "ZKOTC3".len() + 6 && !r.contains(' '), "{r}");
     assert!(r[8..].chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()));
     assert_eq!(payment_reference(3, " GCKKGUXAMPLEADDRESSXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXMK65H "), r, "whitespace-insensitive");
     assert_eq!(reference_hash(&r), reference_hash(&r.to_lowercase()), "folded before hashing");

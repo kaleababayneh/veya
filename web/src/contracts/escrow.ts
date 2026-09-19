@@ -426,7 +426,7 @@ export interface Client {
   /**
    * Construct and simulate a payment_reference transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * The text a buyer must type into the FAST description for reservation `id` when claiming with `buyer`:
-   * `ZKOTC <id> <6 hex of sha256(buyer address)>` (mirrors `zkotc_lib::payment_reference`).
+   * `ZKOTC<id><6 hex of sha256(buyer address)>`, one token (mirrors `zkotc_lib::payment_reference`).
    */
   payment_reference: ({id, buyer}: {id: u64, buyer: string}, options?: MethodOptions) => Promise<AssembledTransaction<string>>
 
@@ -506,7 +506,7 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAPZ2V0X3Jlc2VydmF0aW9uAAAAAAEAAAAAAAAAAmlkAAAAAAAGAAAAAQAAA+kAAAfQAAAAC1Jlc2VydmF0aW9uAAAAAAM=",
         "AAAAAAAAAAAAAAARaXNfbnVsbGlmaWVyX3VzZWQAAAAAAAABAAAAAAAAAAludWxsaWZpZXIAAAAAAAPuAAAAIAAAAAEAAAAB",
         "AAAAAAAAADtSZXNlcnZhdGlvbnMgd2l0aCBpZHMgaW4gYFtzdGFydCwgc3RhcnQrbGltaXQpYCB0aGF0IGV4aXN0LgAAAAARbGlzdF9yZXNlcnZhdGlvbnMAAAAAAAACAAAAAAAAAAVzdGFydAAAAAAAAAYAAAAAAAAABWxpbWl0AAAAAAAABAAAAAEAAAPqAAAH0AAAAAtSZXNlcnZhdGlvbgA=",
-        "AAAAAAAAAL1UaGUgdGV4dCBhIGJ1eWVyIG11c3QgdHlwZSBpbnRvIHRoZSBGQVNUIGRlc2NyaXB0aW9uIGZvciByZXNlcnZhdGlvbiBgaWRgIHdoZW4gY2xhaW1pbmcgd2l0aCBgYnV5ZXJgOgpgWktPVEMgPGlkPiA8NiBoZXggb2Ygc2hhMjU2KGJ1eWVyIGFkZHJlc3MpPmAgKG1pcnJvcnMgYHprb3RjX2xpYjo6cGF5bWVudF9yZWZlcmVuY2VgKS4AAAAAAAARcGF5bWVudF9yZWZlcmVuY2UAAAAAAAACAAAAAAAAAAJpZAAAAAAABgAAAAAAAAAFYnV5ZXIAAAAAAAATAAAAAQAAABA=",
+        "AAAAAAAAAMZUaGUgdGV4dCBhIGJ1eWVyIG11c3QgdHlwZSBpbnRvIHRoZSBGQVNUIGRlc2NyaXB0aW9uIGZvciByZXNlcnZhdGlvbiBgaWRgIHdoZW4gY2xhaW1pbmcgd2l0aCBgYnV5ZXJgOgpgWktPVEM8aWQ+PDYgaGV4IG9mIHNoYTI1NihidXllciBhZGRyZXNzKT5gLCBvbmUgdG9rZW4gKG1pcnJvcnMgYHprb3RjX2xpYjo6cGF5bWVudF9yZWZlcmVuY2VgKS4AAAAAABFwYXltZW50X3JlZmVyZW5jZQAAAAAAAAIAAAAAAAAAAmlkAAAAAAAGAAAAAAAAAAVidXllcgAAAAAAABMAAAABAAAAEA==",
         "AAAAAAAAAAAAAAARcmVzZXJ2YXRpb25fY291bnQAAAAAAAAAAAAAAQAAAAY=",
         "AAAAAAAAAC5BY3RpdmUgcmVzZXJ2YXRpb25zIGN1cnJlbnRseSBoZWxkIGJ5IGBidXllcmAuAAAAAAATYWN0aXZlX3Jlc2VydmF0aW9ucwAAAAABAAAAAAAAAAVidXllcgAAAAAAABMAAAABAAAABA==" ]),
       options

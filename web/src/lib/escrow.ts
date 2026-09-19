@@ -142,7 +142,7 @@ export const ERROR_HELP: Record<string, string> = {
   BondHeld: "The bond slice stays in escrow until the buyer's claim window has passed.",
   NoBond: "No bond is held for this reservation.",
   InvalidBond: "The bond rate must be at most 50%.",
-  ReferenceMismatch: "The transfer description does not carry the payment reference for this wallet and reservation (ZKOTC <id> <code>).",
+  ReferenceMismatch: "The transfer description does not carry the payment reference for this wallet and reservation (ZKOTC<id><code>).",
   InvalidPrice: "The price must be positive.",
   InvalidLimits: "Per-trade limits must be within the deployment's bounds, min ≤ max, and the deposit must be worth at least one minimum trade.",
   BlobTooLarge: "The encrypted payee details are too large.",

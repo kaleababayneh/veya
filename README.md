@@ -86,7 +86,7 @@ The escrow therefore has: `declare_paid` (the locked buyer records the payment; 
 offer); and `claim_bond` (if the offer is released after a declared payment, the buyer who declared can still prove it
 within `late_claim_window` and take the bond; otherwise the seller gets it back via `withdraw_bond` or automatically).
 A takeover of a stale lock counts as a release, so a seller cannot dodge the bond by letting a second buyer settle.
-**Wallet binding (2026-09-10):** the buyer types a payment reference `ZKOTC <offer> <6 hex of sha256(wallet)>` into the
+**Wallet binding (2026-09-10):** the buyer types a payment reference `ZKOTC<offer><6 hex of sha256(wallet)>` (one token) into the
 FAST description; the guest requires it in the signed dekont and commits its hash, and the escrow recomputes it from the
 offer id and the claiming wallet. A stolen `.eml` therefore settles nothing for anyone but the wallet it was paid for.
 The parser also anchors the transfer direction on three bank-generated rows (title, `Fast Mesaj Kodu` prefix, last
@@ -130,7 +130,7 @@ The e-mail is kept in memory only for the job; bodies are never logged. DKIM key
 
 ## Journal / public values (184 bytes)
 `dkim_key_hash ‖ domain_hash ‖ payee_hash ‖ amount_kurus(u64) ‖ date_yyyymmdd(u64) ‖ nullifier ‖ reservation_id(u64) ‖ reference_hash`.
-`reference_hash = sha256("ZKOTC <reservation id> <6 hex of sha256(claiming wallet)>")` — the buyer types that reference into the FAST description, so a stolen e-mail settles nothing for another wallet.
+`reference_hash = sha256("ZKOTC<reservation id><6 hex of sha256(claiming wallet)>")` — the buyer types that reference into the FAST description, so a stolen e-mail settles nothing for another wallet.
 `payee_hash = sha256("zkotc/payee/v1" ‖ TRcc ‖ bank code(5) ‖ last 6 IBAN digits ‖ Turkish-folded recipient name)` — Ziraat's dekont masks IBANs, so the binding uses the visible check digits, bank code, IBAN tail and the recipient name; the escrow derives the same hash from the seller's full IBAN + name.
 Escrow checks: router.verify(seal, image_id, sha256(journal)) · reservation_id · DKIM key trusted · domain · payee_hash == ad · amount (İşlem Tutarı) ≥ reservation's TRY · reference_hash == sha256(payment_reference(reservation, wallet)) · Istanbul day(reservation) ≤ date ≤ Istanbul day(now) · nullifier unused.
 
