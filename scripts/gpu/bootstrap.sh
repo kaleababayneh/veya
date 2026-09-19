@@ -38,6 +38,8 @@ mkdir -p "$Z/bin" "$Z/cache"
 exec > >(tee -a "$LOG") 2>&1
 echo "RUNNING" > "$Z/bootstrap.status"
 trap 'echo "bootstrap FAILED at line $LINENO (see $LOG)"; echo FAIL > "$Z/bootstrap.status"' ERR
+# an explicit `exit 1` (missing artifact) does not fire ERR: make sure the status never stays RUNNING
+trap '[ "$(cat "$Z/bootstrap.status")" = OK ] || echo FAIL > "$Z/bootstrap.status"' EXIT
 T0=$(date +%s)
 step() { echo; echo "== [$(( $(date +%s) - T0 ))s] $*"; }
 

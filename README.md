@@ -74,9 +74,11 @@ reveal service's X25519 key (`Config::reveal_pubkey`) and stored on-chain only a
 `/api/reveal` opens them for the wallet that holds a reservation (or the maker) after a wallet-signed message, and the client refuses
 to show them unless they hash to the on-chain commitment. Nothing on the ledger names a bank account.
 
-**No .eml download (2026-09-10):** with a Google OAuth client id (`NEXT_PUBLIC_GOOGLE_CLIENT_ID`, see `docs/GMAIL-OAUTH.md`)
-the reservation page fetches Ziraat's e-dekont from the buyer's Gmail in the browser (read-only token, never sent to us) and
-submits the raw message to the prover; manual upload stays as the fallback.
+**Getting the e-mail to the prover (2026-09-12):** Ziraat only sends the e-dekont to the address registered with the bank, so the
+buyer hands the original message to the app: in Gmail on a computer, ⋮ → *Show original* → *Download original*, and drops the `.eml` on the reservation page. Plain forwarding re-wraps the message and breaks the DKIM signature, so it is refused.
+Gmail OAuth was built and dropped: Google's restricted-scope verification (CASA) is needed before anyone but listed test users can
+sign in. The production path is an inbound address per wallet (`<token>@in.<domain>`, Cloudflare Email Routing) that the buyer
+forwards Ziraat's mail to once; Gmail auto-forwarding keeps DKIM intact.
 
 **Trust model.** The buyer pays off-chain after reserving, so a timer alone would let the maker withdraw the moment it ends.
 The escrow therefore has: `declare_paid` (the locked buyer records the payment; the lock is extended to at least

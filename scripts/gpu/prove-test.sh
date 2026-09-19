@@ -15,7 +15,11 @@ body = json.dumps({"eml_base64": base64.b64encode(open(eml, "rb").read()).decode
                    "recipient_iban": iban, "recipient_name": name, "min_amount_kurus": 1, "since_yyyymmdd": 20000101}).encode()
 t0 = time.time()
 req = urllib.request.Request(url + "/jobs", data=body, headers={"content-type": "application/json", "x-prover-token": tok})
-job = json.load(urllib.request.urlopen(req, timeout=60))
+try:
+    job = json.load(urllib.request.urlopen(req, timeout=60))
+except urllib.error.HTTPError as e:
+    # 400 = the e-mail was checked (DKIM, recipient, amount, reference) and rejected before proving; the API itself works
+    print(f"REJECTED {e.code}: {e.read().decode()[:400]}"); sys.exit(3)
 jid = job["id"]; print(f"job {jid}: {job.get('status')}")
 last = None
 while True:

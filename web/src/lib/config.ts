@@ -10,8 +10,6 @@ export const config = {
   proverUrl: (process.env.NEXT_PUBLIC_PROVER_URL ?? "http://localhost:8787").replace(/\/$/, ""),
   /** shared token the prover requires on POST /jobs (public in the bundle; it only deters drive-by abuse) */
   proverToken: process.env.NEXT_PUBLIC_PROVER_TOKEN ?? "",
-  /** Google OAuth client id (Web application) for the browser-side Gmail fetch of the e-dekont; empty = manual upload only */
-  googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
   /** minutes left on a lock below which the UI refuses to let the buyer start a bank payment */
   minMinutesToPay: 15,
 };

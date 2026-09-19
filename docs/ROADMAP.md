@@ -32,7 +32,7 @@ consider having the buyer put `ZKOTC-<offer id>` in the transfer description for
 ## 2. Product (months 2–4)
 | # | Task |
 |---|---|
-| 2.1 | **Gmail OAuth** (`gmail.readonly`, `messages.get?format=raw`) to fetch the statement `.eml` automatically; IMAP fallback. Removes the "Show original → Download" step. |
+| 2.1 | **Inbound address instead of .eml** — Ziraat only mails the registered address, so give each wallet `<token>@in.<domain>` (Cloudflare Email Routing → Worker → inbox service on the Azure VM) and let the buyer add a one-time Gmail forwarding rule; the page shows the Gmail confirmation code and starts proving when the dekont lands. Gmail auto-forward keeps DKIM valid. (Gmail OAuth was tried and dropped: restricted scope, CASA verification before non-whitelisted users can sign in.) |
 | 2.2 | **Bank providers**: abstraction in `zkotc-lib` (`domain`, `parse`, `nullifier`), guest commits a provider id, escrow allow-list per provider. Add İş Bankası, Garanti, Yapı Kredi, Akbank (each: DKIM domain/key + parser + test e-mails). |
 | 2.3 | ~~**Seller privacy**~~ **Done 2026-09-10 (v5):** payee details sealed to a reveal key, only `payee_hash` + ciphertext on-chain, revealed to the reserving wallet via `/api/reveal` after a signed message (raw or SEP-53) and verified against the hash client-side. Next: move the reveal key into a TEE. |
 | 2.4 | **Market features**: ~~partial fills~~ **done 2026-10 (v5 ads + reservations, per-ad and per-buyer caps, maker counters)**; still open: price pegged to an XLM/USDC↔TRY reference (Reflector oracle) with a spread, maker fees, reputation beyond counters, buyer-side bond. |

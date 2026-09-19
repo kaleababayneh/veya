@@ -42,9 +42,9 @@ box() { ssh -p "$PORT_SSH" -o StrictHostKeyChecking=accept-new -o ConnectTimeout
 art() { ssh -o LogLevel=ERROR "$ARTIFACT_HOST" "$@"; }
 
 step "waiting for ssh on $TARGET:$PORT_SSH (Vast: image pull + boot; 'Permission denied' right after boot is normal, keys land a few seconds later)"
-for n in $(seq 1 36); do
+for n in $(seq 1 120); do   # up to 10 min: image pull + boot
   if box 'echo ok' 2>/dev/null | grep -q ok; then break; fi
-  [ "$n" = 36 ] && { echo "ssh never came up — if the instance says 'failed to resolve reference', destroy it and rent another host"; exit 1; }
+  [ "$n" = 120 ] && { echo "ssh never came up — if the instance says 'failed to resolve reference', destroy it and rent another host"; exit 1; }
   sleep 5
 done
 box 'nvidia-smi --query-gpu=name,driver_version --format=csv,noheader; nproc; free -g | awk "/Mem/{print \$2\" GB RAM\"}"; df -h ~ | awk "NR==2{print \$4\" free\"}"' | tr '\n' ' '; echo
@@ -56,6 +56,7 @@ box "mkdir -p ~/.ssh && touch ~/.ssh/authorized_keys && (grep -qF '$AK' ~/.ssh/a
 ENGINE=${ENGINE:-icicle}
 case "$ENGINE" in icicle) DIRS="bin icicle zkey" ;; native) DIRS="bin g16" ;; *) echo "ENGINE must be icicle or native"; exit 2 ;; esac
 step "syncing artifacts $ARTIFACT_HOST:~/$ARTIFACT_DIR/{$DIRS} → box (engine $ENGINE; ~4 GB the first time)"
+box 'mkdir -p ~/gpu-artifacts ~/zkotc'   # rsync only creates the last path component
 for d in $DIRS; do
   art "rsync -aL --info=stats1 -e 'ssh -p $PORT_SSH -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR' ~/$ARTIFACT_DIR/$d/ $TARGET:~/gpu-artifacts/$d/" | grep -E "Total transferred" | sed "s/^/   $d: /" || true
 done

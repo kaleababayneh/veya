@@ -7,7 +7,6 @@ import { useWallet } from "@/lib/wallet";
 import { escrow, getAd, getReservation, getConfig, send, unwrapResult, explainError, ERROR_HELP, type Ad, type Reservation, type EscrowConfig } from "@/lib/escrow";
 import { requestReveal, cachedReveal, type Revealed } from "@/lib/reveal";
 import { createJob, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJob, type ProverInfo } from "@/lib/prover";
-import { gmailConfigured, getGmailToken, findDekontMails, fetchRawEmlBase64, forgetGmailToken } from "@/lib/gmail";
 import { tokenByAddress } from "@/lib/tokens";
 import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, istanbulYmd, nowSec, short, hexToBuffer, bytesToHex, paymentReference } from "@/lib/format";
 import { config } from "@/lib/config";
@@ -299,7 +298,6 @@ function BuyerFlow({
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [job, setJob] = useState<ProverJob | null>(null);
   const [jobErr, setJobErr] = useState<string | null>(null);
-  const [gmail, setGmail] = useState<{ phase: "idle" | "auth" | "search" | "verify" | "none" | "error"; msg?: string }>({ phase: "idle" });
   const [tick, setTick] = useState(0);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -348,37 +346,10 @@ function BuyerFlow({
     }
   };
 
-  /** Gmail path: token → search e-dekonts since the reservation → try them newest-first until the prover accepts one. */
-  const fetchFromGmail = async () => {
-    setJobErr(null);
-    try {
-      setGmail({ phase: "auth" });
-      const token = await getGmailToken();
-      setGmail({ phase: "search" });
-      const mails = await findDekontMails(token, Number(r.created_at));
-      if (mails.length === 0) return setGmail({ phase: "none" });
-      let lastErr = "";
-      for (const m of mails) {
-        setGmail({ phase: "verify", msg: `Checking the e-dekont from ${new Date(m.internalDate * 1000).toLocaleTimeString("en-GB", { timeZone: "Europe/Istanbul" })}…` });
-        try {
-          await submitEml(await fetchRawEmlBase64(token, m.id));
-          setGmail({ phase: "idle" });
-          return;
-        } catch (e) {
-          lastErr = e instanceof Error ? e.message : String(e);
-        }
-      }
-      setGmail({ phase: "error", msg: `${mails.length} e-dekont e-mail${mails.length > 1 ? "s" : ""} since your reservation, none for this payment: ${lastErr}` });
-    } catch (e) {
-      setGmail({ phase: "error", msg: e instanceof Error ? e.message : String(e) });
-    }
-  };
-
   const s1: "done" | "active" | "todo" = canPay ? "done" : "active";
   const s2: "done" | "active" | "todo" = paid ? "done" : canPay ? "active" : "todo";
   const s3: "done" | "active" | "todo" = proved ? "done" : paid && canPay ? "active" : "todo";
   const s4: "done" | "active" | "todo" = proved ? "active" : "todo";
-  const busyGmail = gmail.phase === "auth" || gmail.phase === "search" || gmail.phase === "verify";
   void tick;
 
   return (
@@ -450,40 +421,18 @@ function BuyerFlow({
       <StepCard n={3} title="Prove it from Ziraat's e-dekont e-mail" state={s3} summary={job?.dekont ? <>Dekont {fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time} · {fmtTRY(job.dekont.amount_kurus)} · proof ready</> : undefined}>
         {!job ? (
           <>
-            <div className="rounded-xl bg-panel-2 p-3 text-sm">
-              <p className="font-medium">First, ask Ziraat to e-mail the receipt of this transfer:</p>
-              <p className="text-muted">Ziraat Mobil → Hesap Hareketleri → the ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} transfer → <b>Dekont Gönder</b> → <b>E-posta</b>. It arrives in about a minute, subject &quot;e-dekont&quot;.</p>
-            </div>
-            {!gmailConfigured() && (
-              <div className="space-y-2">
-                <Button className="w-full sm:w-auto" disabled title="Needs a Google OAuth client id (NEXT_PUBLIC_GOOGLE_CLIENT_ID)">Fetch it from Gmail</Button>
-                <p className="text-xs text-muted">Direct Gmail import is not enabled on this deployment yet, so download the e-mail as .eml and drop it below.</p>
-                <p className="text-center text-xs text-muted">or</p>
-              </div>
-            )}
-            {gmailConfigured() && (
-              <div className="space-y-2">
-                <Button className="w-full sm:w-auto" onClick={fetchFromGmail} disabled={!consent || busyGmail}>
-                  {gmail.phase === "auth" ? <><Spinner /> Waiting for Google…</> : gmail.phase === "search" ? <><Spinner /> Searching your inbox…</> : gmail.phase === "verify" ? <><Spinner /> {gmail.msg}</> : "Fetch it from Gmail"}
-                </Button>
-                {gmail.phase === "none" && (
-                  <Alert kind="warn">
-                    No e-dekont from Ziraat since {fmtDate(r.created_at)} in this Gmail yet. Send it from Ziraat Mobil, wait a minute, then{" "}
-                    <button className="underline" onClick={fetchFromGmail}>check again</button> · <button className="underline" onClick={() => { forgetGmailToken(); fetchFromGmail(); }}>use another Google account</button>.
-                  </Alert>
-                )}
-                {gmail.phase === "error" && <Alert kind="error">{gmail.msg}</Alert>}
-                <p className="text-center text-xs text-muted">or</p>
-              </div>
-            )}
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
+              <li><b className="text-fg">Ziraat Mobil</b> → Hesap Hareketleri → the ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} transfer → <b className="text-fg">Dekont Gönder</b> → <b className="text-fg">E-posta</b>. The bank e-mails it to your registered address within a minute (subject &quot;e-dekont&quot;).</li>
+              <li>Open that e-mail in <b className="text-fg">Gmail on a computer</b> → ⋮ menu → <b className="text-fg">Show original</b> → <b className="text-fg">Download original</b>, and drop the file below. Do not forward it: forwarding breaks the bank&apos;s signature.</li>
+            </ol>
             <label
-              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center text-sm ${file ? "border-ok/60 bg-ok/5" : "border-line hover:border-accent/60"}`}
+              className={`flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-5 text-center text-sm ${file ? "border-ok/60 bg-ok/5" : "border-line hover:border-accent/60"}`}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }}
             >
               <input type="file" accept=".eml,message/rfc822" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              {file ? <span className="font-medium">{file.name}</span> : <span className="font-medium">Drop the e-mail here as .eml, or click to choose</span>}
-              <span className="text-xs text-muted">Gmail: open the e-mail → ⋮ → Show original → Download original. Apple Mail: File → Save As → Raw Message Source. Never forward it.</span>
+              {file ? <span className="font-medium">{file.name}</span> : <span className="font-medium">Drop the .eml file here, or click to choose it</span>}
+              <span className="text-xs text-muted">Apple Mail: File → Save As → Raw Message Source</span>
             </label>
             <label className="flex items-start gap-2 text-xs text-muted">
               <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
@@ -493,7 +442,7 @@ function BuyerFlow({
                 {showPrivacy && <span className="block pt-1">Prover: <span className="mono">{config.proverUrl}</span>{info ? ` · mode ${info.prover_mode} · DKIM key from ${info.dkim_source}` : ""}. The e-mail is checked (DKIM signature, recipient, amount, reference) before proving and discarded when the job ends.</span>}
               </span>
             </label>
-            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent}>Verify e-mail and start proving</Button>
+            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent}>Verify the e-mail and start proving</Button>
             {jobErr && <Alert kind="error">{jobErr}</Alert>}
           </>
         ) : (
