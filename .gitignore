@@ -1,0 +1,23 @@
+# secrets / private data
+web/.env.local
+prover/testdata/private/
+*.eml
+receipt*.pdf
+zbe-dekont.html
+Hesap_Hareketleri_*.html
+*.eml
+# build outputs
+contracts/target/
+contracts/test_snapshots/
+contracts/**/test_snapshots/
+prover/target/
+prover/build.log
+web/node_modules/
+web/.next/
+web/.vercel/
+# vendored research clones
+zkpdf/
+zkpdf-template/
+vendor/
+zkotc-lib/target/
+prover/build.log

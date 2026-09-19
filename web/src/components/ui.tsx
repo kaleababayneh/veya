@@ -1,0 +1,115 @@
+"use client";
+import React from "react";
+import Link from "next/link";
+import { OfferStatus } from "@/contracts/escrow";
+import { statusLabel } from "@/lib/escrow";
+import { txUrl } from "@/lib/config";
+
+export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`rounded-2xl border border-line bg-panel p-5 shadow-sm ${className}`}>{children}</div>;
+}
+
+export function Button({
+  children,
+  variant = "primary",
+  className = "",
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
+  const v =
+    variant === "primary"
+      ? "bg-accent text-accent-fg hover:brightness-110"
+      : variant === "danger"
+        ? "bg-danger/10 text-danger border border-danger/40 hover:bg-danger/20"
+        : "border border-line hover:bg-panel-2";
+  return (
+    <button
+      {...rest}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${v} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
+      {children}
+      {hint && <span className="block text-xs text-muted">{hint}</span>}
+    </label>
+  );
+}
+
+export const inputCls =
+  "w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-sm outline-none ring-accent/40 focus:ring-2 placeholder:text-muted/70";
+
+export function StatusBadge({ status, expired }: { status: OfferStatus; expired?: boolean }) {
+  const map: Record<number, string> = {
+    [OfferStatus.Open]: "bg-ok/15 text-ok",
+    [OfferStatus.Locked]: "bg-warn/15 text-warn",
+    [OfferStatus.Fulfilled]: "bg-accent/15 text-accent",
+    [OfferStatus.Cancelled]: "bg-muted/15 text-muted",
+  };
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${map[status]}`}>
+      {statusLabel[status]}
+      {status === OfferStatus.Locked && expired ? " · timer ended" : ""}
+    </span>
+  );
+}
+
+export function Alert({ kind = "info", children }: { kind?: "info" | "warn" | "error" | "ok"; children: React.ReactNode }) {
+  const cls = {
+    info: "border-accent/30 bg-accent/5",
+    warn: "border-warn/40 bg-warn/10",
+    error: "border-danger/40 bg-danger/10",
+    ok: "border-ok/40 bg-ok/10",
+  }[kind];
+  return <div className={`rounded-xl border px-4 py-3 text-sm ${cls}`}>{children}</div>;
+}
+
+export function TxLink({ hash, label = "View transaction" }: { hash: string; label?: string }) {
+  if (!hash) return null;
+  return (
+    <a className="underline decoration-dotted underline-offset-4 hover:text-accent" href={txUrl(hash)} target="_blank" rel="noreferrer">
+      {label} ↗
+    </a>
+  );
+}
+
+export function Spinner() {
+  return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />;
+}
+
+export function Empty({ title, children }: { title: string; children?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-line p-10 text-center">
+      <p className="font-medium">{title}</p>
+      {children && <div className="mt-2 text-sm text-muted">{children}</div>}
+    </div>
+  );
+}
+
+export function Steps({ current, steps }: { current: number; steps: string[] }) {
+  return (
+    <ol className="flex flex-wrap gap-2 text-xs">
+      {steps.map((s, i) => (
+        <li
+          key={s}
+          className={`rounded-full border px-3 py-1 ${i < current ? "border-ok/40 text-ok" : i === current ? "border-accent bg-accent/10 text-accent" : "border-line text-muted"}`}
+        >
+          {i + 1}. {s}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function BackLink({ href = "/", children = "← All offers" }: { href?: string; children?: React.ReactNode }) {
+  return (
+    <Link href={href} className="text-sm text-muted hover:text-fg">
+      {children}
+    </Link>
+  );
+}

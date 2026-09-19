@@ -1,0 +1,18 @@
+[package]
+name = "zkotc-escrow"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "P2P TRY<>crypto OTC escrow on Soroban, released by a RISC Zero zkEmail proof of a Ziraat FAST payment"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+sha2 = "0.10"

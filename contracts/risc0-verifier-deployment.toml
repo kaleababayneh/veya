@@ -1,0 +1,21 @@
+[chains.stellar-testnet]
+name = "Stellar Testnet"
+admin = "GCZYOCBQUPBSJFSKWQ7XDABIITK73XA5IVX3N4TNZDN26FTKYXEN7LZU"
+router = "CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG"
+timelock-controller = "CDJ47SNGJXWT435KYW4QO4QX262RUANOKLRGHC2PLW2YI7EQHFCQAMBR"
+timelock-delay = 0
+
+[[chains.stellar-testnet.verifiers]]
+name = "groth16-verifier"
+version = "3.0.0"
+selector = "73c457ba"
+verifier = "CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI"
+estop = "CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4"
+unroutable = false
+
+[chains.stellar-mainnet]
+name = "Stellar Mainnet"
+admin = ""
+router = ""
+timelock-controller = ""
+timelock-delay = 604800

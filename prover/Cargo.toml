@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["host", "methods"]
+# the guest crate (methods/guest) is its own workspace so it can carry RISC Zero's crate patches
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+zkotc-lib = { path = "../zkotc-lib" }
+risc0-zkvm = { version = "3.0" }
+risc0-build = { version = "3.0" }
+risc0-ethereum-contracts = { version = "3.0" }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"

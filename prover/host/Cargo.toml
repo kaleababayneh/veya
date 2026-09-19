@@ -1,0 +1,43 @@
+[package]
+name = "zkotc-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+default-run = "zkotc"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "zkotc"
+path = "src/bin/zkotc.rs"
+
+[[bin]]
+name = "zkotc-server"
+path = "src/bin/server.rs"
+
+[dependencies]
+methods = { path = "../methods" }
+risc0-zkvm = { workspace = true }
+risc0-ethereum-contracts = { workspace = true }
+zkotc-lib = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8" }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+hickory-resolver = "0.24"
+anyhow = "1"
+uuid = { version = "1", features = ["v4"] }
+dotenvy = "0.15"
+
+[features]
+default = []
+cuda = ["risc0-zkvm/cuda"]
+metal = ["risc0-zkvm/metal"]

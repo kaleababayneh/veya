@@ -1,0 +1,17 @@
+[package]
+name = "zkotc-lib"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Host+guest shared logic: DKIM verification, MIME extraction, Ziraat statement parsing, public values"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10.9"
+rsa = { version = "=0.9.6", features = ["sha2"] }
+base64 = "0.22"
+
+[dev-dependencies]
+hex = "0.4"
+
+[workspace]
