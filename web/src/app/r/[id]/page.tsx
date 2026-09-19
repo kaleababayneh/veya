@@ -6,9 +6,9 @@ import { ReservationStatus, AdStatus } from "@/contracts/escrow";
 import { useWallet } from "@/lib/wallet";
 import { escrow, getAd, getReservation, getConfig, send, unwrapResult, explainError, ERROR_HELP, type Ad, type Reservation, type EscrowConfig } from "@/lib/escrow";
 import { requestReveal, cachedReveal, type Revealed } from "@/lib/reveal";
-import { createJob, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJob, type ProverInfo } from "@/lib/prover";
+import { requestProof, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJob, type ProverInfo } from "@/lib/prover";
 import { tokenByAddress } from "@/lib/tokens";
-import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, istanbulYmd, nowSec, short, hexToBuffer, bytesToHex, paymentReference } from "@/lib/format";
+import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, nowSec, short, hexToBuffer, bytesToHex, paymentReference } from "@/lib/format";
 import { config } from "@/lib/config";
 import { Alert, BackLink, Button, Card, ReservationBadge, Spinner, TxLink } from "@/components/ui";
 import { Countdown } from "@/components/Countdown";
@@ -24,6 +24,7 @@ export default function ReservationPage() {
   const [ad, setAd] = useState<Ad | null>(null);
   const [cfg, setCfg] = useState<EscrowConfig | null>(null);
   const [info, setInfo] = useState<ProverInfo | null>(null);
+  const [proverDown, setProverDown] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<{ label: string; hash: string } | null>(
@@ -51,10 +52,10 @@ export default function ReservationPage() {
   useEffect(() => {
     refresh();
     getConfig().then(setCfg).catch(() => {});
-    proverInfo().then(setInfo).catch(() => setInfo(null));
+    proverInfo().then((i) => { setInfo(i); setProverDown(false); }).catch(() => { setInfo(null); setProverDown(true); });
     const t = setInterval(() => {
       refresh();
-      proverInfo().then(setInfo).catch(() => {});
+      proverInfo().then((i) => { setInfo(i); setProverDown(false); }).catch(() => setProverDown(true));
       setNow(nowSec());
     }, 10_000);
     return () => clearInterval(t);
@@ -175,12 +176,12 @@ export default function ReservationPage() {
 
       {/* buyer: active reservation */}
       {active && isBuyer && (
-        <BuyerFlow mode="buy" r={r} ad={ad} cfg={cfg} info={info} address={address!} payee={shownPayee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={settle} onRelease={release} busy={busy} expired={expired} />
+        <BuyerFlow mode="buy" r={r} ad={ad} cfg={cfg} info={info} proverDown={proverDown} address={address!} payee={shownPayee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={settle} onRelease={release} busy={busy} expired={expired} />
       )}
 
       {/* buyer: released after declaring — claim the maker's bond slice with the same proof */}
       {claimOpen && isBuyer && (
-        <BuyerFlow mode="bond" r={r} ad={ad} cfg={cfg} info={info} address={address!} payee={shownPayee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={claimBond} onRelease={release} busy={busy} expired={false} />
+        <BuyerFlow mode="bond" r={r} ad={ad} cfg={cfg} info={info} proverDown={proverDown} address={address!} payee={shownPayee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={claimBond} onRelease={release} busy={busy} expired={false} />
       )}
 
       {/* maker / others */}
@@ -282,10 +283,10 @@ function StepCard({ n, title, state, summary, children }: { n: number; title: st
 }
 
 function BuyerFlow({
-  mode, r, ad, cfg, info, address, payee, revealing, onReveal, onDeclare, onClaim, onRelease, busy, expired,
+  mode, r, ad, cfg, info, proverDown, address, payee, revealing, onReveal, onDeclare, onClaim, onRelease, busy, expired,
 }: {
   mode: "buy" | "bond";
-  r: Reservation; ad: Ad; cfg: EscrowConfig | null; info: ProverInfo | null;
+  r: Reservation; ad: Ad; cfg: EscrowConfig | null; info: ProverInfo | null; proverDown: boolean;
   address: string;
   payee: Revealed | null; revealing: boolean; onReveal: () => Promise<void>;
   onDeclare: () => Promise<void>;
@@ -293,6 +294,7 @@ function BuyerFlow({
   busy: string | null; expired: boolean;
 }) {
   const t = tokenByAddress(ad.token);
+  const { signMessage } = useWallet();
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(true);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -306,7 +308,6 @@ function BuyerFlow({
   const paid = bond || declared;
   const minutesLeft = (Number(r.lock_expires_at) - nowSec()) / 60;
   const tooLateToPay = !bond && !paid && minutesLeft < config.minMinutesToPay;
-  const sinceYmd = istanbulYmd(Number(r.created_at));
   const feeBps = cfg ? Number(cfg.fee_bps) : 25;
   const payout = r.amount - (r.amount * BigInt(feeBps)) / 10000n;
   const prize = bond ? `${fmtToken(r.bond_slice, ad.decimals)} ${t.symbol}` : `${fmtToken(payout, ad.decimals)} ${t.symbol}`;
@@ -330,8 +331,8 @@ function BuyerFlow({
   }, [job, proving]);
 
   const submitEml = async (emlBase64: string) => {
-    if (!payee) throw new Error("payee details not revealed");
-    const j = await createJob({ emlBase64, offerId: r.id, buyer: address, recipientIban: payee.iban, recipientName: payee.name, minAmountKurus: r.try_amount_kurus, sinceYmd });
+    // the wallet signs a short message (no transaction); /api/prove checks the reservation on-chain and forwards
+    const j = await requestProof({ reservationId: r.id, address, signMessage, emlBase64 });
     localStorage.setItem(`zkotc-job-r${r.id}`, j.id);
     setJob(j);
   };
@@ -442,7 +443,9 @@ function BuyerFlow({
                 {showPrivacy && <span className="block pt-1">Prover: <span className="mono">{config.proverUrl}</span>{info ? ` · mode ${info.prover_mode} · DKIM key from ${info.dkim_source}` : ""}. The e-mail is checked (DKIM signature, recipient, amount, reference) before proving and discarded when the job ends.</span>}
               </span>
             </label>
-            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent}>Verify the e-mail and start proving</Button>
+            {proverDown && <Alert kind="warn">The prover is offline right now. Your reservation is safe: the declared payment stays protected, and you can upload as soon as it is back.</Alert>}
+            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent || proverDown}>Verify the e-mail and start proving</Button>
+            <p className="text-xs text-muted">Your wallet will ask for a signature first (no transaction, no fee): it proves this reservation is yours before the prover spends GPU time.</p>
             {jobErr && <Alert kind="error">{jobErr}</Alert>}
           </>
         ) : (

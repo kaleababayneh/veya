@@ -47,28 +47,23 @@ async function j<T>(res: Response): Promise<T> {
 
 export const proverInfo = () => fetch(`${config.proverUrl}/info`).then((r) => j<ProverInfo>(r));
 
-export async function createJob(args: {
+/**
+ * Start a proving job through this app's `/api/prove` gate: the wallet signs a short message (no transaction),
+ * the server checks the reservation on-chain, opens the maker's payee details and forwards the e-mail to the
+ * prover with its private token. The browser never holds the prover token or the payee-derived parameters.
+ */
+export async function requestProof(args: {
+  reservationId: bigint;
+  address: string;
+  signMessage: (message: string) => Promise<{ signedMessage: string }>;
   emlBase64: string;
-  offerId: bigint;
-  /** claiming wallet — the dekont must carry paymentReference(offerId, buyer) */
-  buyer: string;
-  recipientIban: string;
-  recipientName: string;
-  minAmountKurus: bigint;
-  sinceYmd: number;
 }): Promise<ProverJob> {
-  const res = await fetch(`${config.proverUrl}/jobs`, {
+  const message = `zkotc prove reservation ${args.reservationId.toString()} at ${Math.floor(Date.now() / 1000)}`;
+  const { signedMessage } = await args.signMessage(message);
+  const res = await fetch("/api/prove", {
     method: "POST",
-    headers: { "content-type": "application/json", ...(config.proverToken ? { "x-prover-token": config.proverToken } : {}) },
-    body: JSON.stringify({
-      eml_base64: args.emlBase64,
-      offer_id: Number(args.offerId),
-      buyer: args.buyer,
-      recipient_iban: args.recipientIban,
-      recipient_name: args.recipientName,
-      min_amount_kurus: Number(args.minAmountKurus),
-      since_yyyymmdd: args.sinceYmd,
-    }),
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ reservationId: args.reservationId.toString(), address: args.address, message, signature: signedMessage, emlBase64: args.emlBase64 }),
   });
   return j<ProverJob>(res);
 }

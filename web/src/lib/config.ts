@@ -8,8 +8,6 @@ export const config = {
   xlmSac: process.env.NEXT_PUBLIC_XLM_SAC ?? "",
   usdcSac: process.env.NEXT_PUBLIC_USDC_SAC ?? "",
   proverUrl: (process.env.NEXT_PUBLIC_PROVER_URL ?? "http://localhost:8787").replace(/\/$/, ""),
-  /** shared token the prover requires on POST /jobs (public in the bundle; it only deters drive-by abuse) */
-  proverToken: process.env.NEXT_PUBLIC_PROVER_TOKEN ?? "",
   /** minutes left on a lock below which the UI refuses to let the buyer start a bank payment */
   minMinutesToPay: 15,
 };

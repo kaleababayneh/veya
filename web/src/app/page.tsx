@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AdStatus } from "@/contracts/escrow";
-import { listAds, getConfig, explainError, quoteKurus, tokensForKurus, type Ad, type EscrowConfig } from "@/lib/escrow";
-import { fmtToken, fmtTRY, short } from "@/lib/format";
+import { AdStatus, ReservationStatus } from "@/contracts/escrow";
+import { listAds, listReservations, getConfig, explainError, quoteKurus, tokensForKurus, type Ad, type EscrowConfig, type Reservation } from "@/lib/escrow";
+import { fmtToken, fmtTRY, fmtDate, short } from "@/lib/format";
 import { TOKENS, tokenByAddress } from "@/lib/tokens";
 import { Alert, Button, Empty, Spinner } from "@/components/ui";
 import { config, contractUrl } from "@/lib/config";
@@ -13,6 +13,7 @@ export default function Market() {
   const [cfg, setCfg] = useState<EscrowConfig | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [token, setToken] = useState<string>("all");
+  const [trades, setTrades] = useState<Reservation[] | null>(null);
 
   useEffect(() => {
     const load = () =>
@@ -28,7 +29,10 @@ export default function Market() {
       );
     load();
     getConfig().then(setCfg).catch(() => {});
-    const t = setInterval(load, 15_000);
+    // settled reservations = completed trades; each one carries a verified proof on-chain
+    const loadTrades = () => listReservations(100).then((rs) => setTrades(rs.filter((r) => r.status === ReservationStatus.Settled).slice(0, 6))).catch(() => setTrades([]));
+    loadTrades();
+    const t = setInterval(() => { load(); loadTrades(); }, 15_000);
     return () => clearInterval(t);
   }, []);
 
@@ -68,6 +72,9 @@ export default function Market() {
               Escrow contract on stellar.expert ↗
             </a>
           )}
+          <p className="mt-2 text-xs text-muted">
+            Testnet: fund a wallet at <a className="underline decoration-dotted" href="https://lab.stellar.org/account/fund?$=network$id=testnet" target="_blank" rel="noreferrer">Stellar Lab (Friendbot)</a>. Paying by FAST needs a Ziraat account; without one, browse the market and open a recent trade to see a settled proof.
+          </p>
         </div>
       </section>
 
@@ -168,6 +175,33 @@ export default function Market() {
           </>
         )}
       </section>
+
+      {/* completed trades: for visitors who cannot pay by FAST themselves, this is the proof that the loop closes */}
+      {trades && trades.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-end justify-between gap-3">
+            <h2 className="text-xl font-semibold">Recent trades</h2>
+            <p className="text-xs text-muted">Each settled with a zero-knowledge proof of the bank transfer, verified on-chain.</p>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {trades.map((r) => {
+              const ad = (ads ?? []).find((a) => a.id === r.ad_id);
+              const t = ad ? tokenByAddress(ad.token) : null;
+              return (
+                <li key={r.id.toString()}>
+                  <Link href={`/r/${r.id}`} className="block rounded-2xl border border-line bg-panel p-4 hover:bg-panel-2/60">
+                    <p className="font-semibold">{fmtTRY(r.try_amount_kurus)} → {ad && t ? `${fmtToken(r.amount, ad.decimals)} ${t.symbol}` : "…"}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      {ad?.nickname || (ad ? short(ad.seller, 4) : "maker")} → <span className="mono">{short(r.buyer, 4)}</span> · settled {fmtDate(r.settled_at)}
+                    </p>
+                    <p className="mt-2 text-xs text-accent">View the trade →</p>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

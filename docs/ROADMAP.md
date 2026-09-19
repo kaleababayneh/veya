@@ -23,8 +23,8 @@ The plans of 8, 9 and 10 September, merged and de-duplicated. Item numbers are n
 | 1 | Real Groth16 receipt through settlement on testnet | **Done 2026-09-08/10.** First receipt verified by the router (tx 27a5f44d…), first full settlement with a real ₺50 FAST (v4 offer #3, tx afdbb4c2…). |
 | 2 | Real ₺50 FAST through the UI with Freighter on both sides, on v5 | **Partial.** Reserve → reveal (wallet signature) → pay → declare done in the browser on v5 (reservations #2–#7). Settlement of #7 pending the parser fix rollout today. Bond path (`claim_bond` after a release) never exercised in the UI. |
 | 3 | Point the app at the GPU prover, HTTPS in front, proof phases live | **Done 2026-09-10/12.** One-command rental (`docs/GPU.md`): prebuilt binaries from the Azure artifact host, Caddy `/gpu/*` re-pointed automatically, progress bar per proof phase. |
-| 4 | Pin the guest image id in the repo + CI (lib, contract, guest, web) | **Open.** Two silent invalidations happened on 9 Sep and one guest change today; `deploy.sh` now checks the escrow config, but nothing in CI does. |
-| 5 | Prover hardening: persistent jobs, wallet auth, rate limits, auto-start on boot | **Partial.** Queue cap (`MAX_JOBS_QUEUED`), shared token, CORS. Still in-memory jobs, token public in the bundle, no per-wallet limit, `nohup` server dies with the container. |
+| 4 | Pin the guest image id in the repo + CI (lib, contract, guest, web) | **Done 2026-09-12.** `prover/IMAGE_ID` (written by `deploy.sh --switch`), `scripts/check-image-id.sh` compares pin / escrow / running prover; GitHub Actions runs lib tests, contract tests, web lint+types+build and checks the pin is documented. |
+| 5 | Prover hardening: persistent jobs, wallet auth, rate limits, auto-start on boot | **Mostly done 2026-09-12.** Jobs are created only through `/api/prove`: wallet-signed message, on-chain check that the wallet holds a live reservation, payee opened server-side, prover token server-only (it was in the public bundle, and the live site had none at all). Container restart re-runs bootstrap via Vast's `/root/onstart.sh`. Still open: in-memory jobs (a prover restart loses in-flight jobs; the buyer simply re-uploads), no per-wallet counter. |
 
 ### A2. Trust and safety
 | # | Item | Status |
@@ -55,7 +55,7 @@ The plans of 8, 9 and 10 September, merged and de-duplicated. Item numbers are n
 ### A4. Operations and mainnet
 | # | Item | Status |
 |---|---|---|
-| 24 | GPU box: fixed host or reproducible rental | **Done 2026-09-12** as reproducible rental: `deploy.sh "<ssh line>"` from nothing to serving in ~4–10 min, artifacts on Azure, escrow/proxy handled. Open: on-start script on the box, prover-offline banner in the app. |
+| 24 | GPU box: fixed host or reproducible rental | **Done 2026-09-12** as reproducible rental: `deploy.sh "<ssh line>"` from nothing to serving in ~4–10 min, artifacts on Azure, escrow/proxy handled, on-start hook, prover-offline banner on step 3. |
 | 25 | Key custody: reveal secret and admin key out of `.env` into a KMS, later a TEE; timelock/multisig | **Open.** |
 | 26 | Metrics, alerts, incident playbook | **Open.** `docs/OPERATIONS.md` covers restarts and logs only. |
 | 27 | Legal review (Türkiye: Law 7518 CASP regime, MASAK), mainnet verifier behind a timelock, audit, USDC mainnet, fee model | **Open.** Not a hackathon item. |
@@ -68,17 +68,17 @@ The plans of 8, 9 and 10 September, merged and de-duplicated. Item numbers are n
 Ordered by risk. "You" = needs a real bank transfer or a wallet you hold; "me" = engineering.
 
 ### Day 0 (today, 12 Sep) — finish the loop on real data
-- [ ] **Parser rollout** (me, running): guest rebuilt with the typed-açıklama fix, published to Azure, escrow switched.
-- [ ] **Settle reservation #7** (you): drop `DEKONT (3).eml` again, claim. First settlement with a wallet-bound reference.
-- [ ] **Single-token reference** (me): merge `compact-reference`, upgrade the escrow in place, incremental host rebuild + publish, redeploy web.
-- [ ] **Verify before the box is destroyed** (me): published `bin/latest` = running binary, escrow image id = published build, proof round-trip through the HTTPS proxy.
+- [x] **Parser rollout** (done 12 Sep): guest rebuilt with the typed-açıklama fix, published to Azure, escrow switched.
+- [x] **Settle reservation #7** (done 12 Sep 17:33): drop `DEKONT (3).eml` again, claim. First settlement with a wallet-bound reference.
+- [x] **Single-token reference** (done 12 Sep): merge `compact-reference`, upgrade the escrow in place, incremental host rebuild + publish, redeploy web.
+- [x] **Verify before the box is destroyed** (done 12 Sep, repeat after any rebuild): published `bin/latest` = running binary, escrow image id = published build, proof round-trip through the HTTPS proxy.
 
 ### 13–14 Sep — make it survive contact with strangers
-- [ ] **Prover auth and limits** (me, ½ day): wallet-signed job creation (same scheme as the reveal route), require a live reservation on-chain for that wallet, per-wallet cap, drop the shared token from the bundle.
-- [ ] **Prover persistence and restart** (me, ½ day): SQLite job store; Vast on-start script runs `bootstrap.sh` so a container restart brings the server back; "prover offline" banner on step 3.
-- [ ] **Image id pin + CI** (me, ½ day): `prover/IMAGE_ID` checked against the escrow config; GitHub Actions for lib tests, contract tests, web lint/build.
+- [x] **Prover auth and limits** (done 12 Sep): `/api/prove` — wallet-signed job creation, live reservation required on-chain, prover token server-only. Per-wallet cap not added (the on-chain gate bounds abuse: ≤2 active reservations per wallet).
+- [x] **Prover restart** (done 12 Sep): on-start hook on the box, "prover offline" banner on step 3. SQLite job store deferred: a restart only loses in-flight jobs and the buyer re-uploads.
+- [x] **Image id pin + CI** (done 12 Sep): `prover/IMAGE_ID`, `scripts/check-image-id.sh`, GitHub Actions (lib, contract, web, pin check).
 - [ ] **Every path once on testnet** (you + me, 1 h): USDC ad, unpaid reservation expiring, maker release after the window then `claim_bond`, `reclaim_bond`.
-- [ ] **Visitors without a Ziraat account** (me, ½ day): a "watch a settled trade" page (proof tx, decoded journal, timings) and testnet-XLM guidance for makers, so the open test is not a wall.
+- [x] **Visitors without a Ziraat account** (done 12 Sep): "Recent trades" on the market page links to settled reservations; Friendbot hint in the rules box. Open: show the settle transaction and decoded journal on the settled reservation page (needs the tx hash, i.e. an event lookup).
 
 ### 15–16 Sep — polish
 - [ ] Toasts for transaction results, skeleton loaders, explicit empty and error states, wallet-not-installed hint.
@@ -86,7 +86,7 @@ Ordered by risk. "You" = needs a real bank transfer or a wallet you hold; "me" =
 - [ ] Turkish copy for steps 2 and 3 (bank-facing labels already in Turkish).
 - [ ] Maker dashboard: per-ad row with active/settled counts, bond state, one-click price change.
 - [ ] Seed 3–4 ads under different nicknames; a second Ziraat-paying tester if available.
-- [ ] Trust statement on How-it-works: what the operator can and cannot do today (admin key, reveal key, prover sees the e-mail).
+- [x] Trust statement on How-it-works (done 12 Sep): what the operator can and cannot do today.
 
 ### 17 Sep — submission
 - [ ] README top section: what it is, the 15 s number, live links, trust model, how to try it.

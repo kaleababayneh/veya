@@ -35,6 +35,14 @@ export default function HowItWorks() {
           <li>Escrow: {config.escrowId ? <a className="mono underline decoration-dotted" href={contractUrl(config.escrowId)} target="_blank" rel="noreferrer">{config.escrowId}</a> : "not configured"}</li>
           <li>RISC Zero verifier router: <a className="mono underline decoration-dotted" href={contractUrl(config.verifierId)} target="_blank" rel="noreferrer">{config.verifierId}</a></li>
         </ul>
+        <p className="mt-3 font-semibold">What the operator can and cannot do today</p>
+        <p className="mt-1 text-muted">
+          Cannot: take anyone&apos;s funds without a valid bank proof, forge a Ziraat receipt, or settle a reservation for a wallet other than the one
+          the payment reference names. Can: read makers&apos; bank details (the reveal key is held by the operator), see the e-mails buyers upload
+          (they are kept in memory only), and change the accepted zkVM program, DKIM keys or the contract code with the admin key, immediately and
+          without a delay. Every such change is a public on-chain transaction. The production plan puts those changes behind a timelock and the reveal
+          key inside an attested enclave; until then, treat this as a testnet demo run by a single operator.
+        </p>
         <p className="mt-3 text-muted">
           Known limits of this version: payers must bank with Ziraat; the DKIM key is RSA-1024 (only the bank could forge it); the full e-mail is shared
           with the prover you choose; the reveal service operator can read makers&apos; bank details; a proof that arrives after the 3-day window is not

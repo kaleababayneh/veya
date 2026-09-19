@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { Keypair, hash } from "@stellar/stellar-sdk";
 import sodium from "libsodium-wrappers";
 import { Client, ReservationStatus } from "@/contracts/escrow";
 import { config } from "@/lib/config";
 import { bytesToHex } from "@/lib/format";
+import { signatureOk, fresh } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
-
-const MAX_AGE_S = 10 * 60;
 
 function bad(status: number, error: string) {
   return NextResponse.json({ error }, { status });
@@ -16,34 +14,6 @@ function bad(status: number, error: string) {
 function unwrap<T>(r: { isOk(): boolean; unwrap(): T; unwrapErr(): { message?: string } | undefined }): T {
   if (r.isOk()) return r.unwrap();
   throw new Error(r.unwrapErr()?.message ?? "contract error");
-}
-
-/** Accept a raw ed25519 signature over the message bytes, or a SEP-53 one (over sha256("Stellar Signed Message:\n" ‖ message)). */
-function signatureOk(address: string, message: string, signature: string): boolean {
-  let kp: Keypair;
-  try {
-    kp = Keypair.fromPublicKey(address);
-  } catch {
-    return false;
-  }
-  const candidates: Buffer[] = [];
-  try {
-    candidates.push(Buffer.from(signature, "base64"));
-  } catch {
-    /* not base64 */
-  }
-  if (/^[0-9a-fA-F]{128}$/.test(signature)) candidates.push(Buffer.from(signature, "hex"));
-  const raw = Buffer.from(message, "utf8");
-  const sep53 = Buffer.from(hash(Buffer.concat([Buffer.from("Stellar Signed Message:\n", "utf8"), raw])));
-  return candidates.some((sig) => sig.length === 64 && (safeVerify(kp, raw, sig) || safeVerify(kp, sep53, sig)));
-}
-
-function safeVerify(kp: Keypair, data: Buffer, sig: Buffer): boolean {
-  try {
-    return kp.verify(data, sig);
-  } catch {
-    return false;
-  }
 }
 
 export async function POST(req: Request) {
@@ -61,8 +31,7 @@ export async function POST(req: Request) {
   // 1. the signed message must name this ad/reservation and be fresh
   const m = /^zkotc reveal ad (\d+) reservation (\d+) at (\d+)$/.exec(message);
   if (!m || m[1] !== adId || m[2] !== (reservationId ?? "0")) return bad(400, "message does not match the request");
-  const age = Math.floor(Date.now() / 1000) - Number(m[3]);
-  if (age < -60 || age > MAX_AGE_S) return bad(400, "signed message is too old; sign again");
+  if (!fresh(Number(m[3]))) return bad(400, "signed message is too old; sign again");
   if (!signatureOk(address, message, signature)) return bad(401, "wallet signature does not verify");
 
   // 2. on-chain: is this wallet the maker, or does it hold a live reservation on the ad?

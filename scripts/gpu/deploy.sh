@@ -91,6 +91,8 @@ for _ in $(seq 1 360); do   # up to 60 min (builds)
 done
 if [ "$st" != OK ]; then echo; echo "bootstrap failed — box:~/zkotc/bootstrap.log:"; box 'tail -40 ~/zkotc/bootstrap.log'; exit 1; fi
 
+# survive a container restart: Vast runs /root/onstart.sh on every start; bootstrap without flags keeps the installed binaries
+box "touch /root/onstart.sh; grep -q 'zkotc/bootstrap.sh' /root/onstart.sh || printf '\\nnohup bash /root/zkotc/bootstrap.sh > /dev/null 2>&1 &\\n' >> /root/onstart.sh"
 URL=$(box "grep -o 'PUBLIC_URL=http[^ ]*' ~/zkotc/bootstrap.log | tail -1 | cut -d= -f2")
 [ -n "$URL" ] || { echo "no public URL (port $PORT not mapped by the provider) — use: ssh -p $PORT_SSH -L $PORT:localhost:$PORT $TARGET and http://localhost:$PORT"; URL="http://localhost:$PORT"; }
 INFO=$(curl -sf --max-time 15 "$URL/info" || true)
@@ -123,6 +125,7 @@ c = json.load(sys.stdin); c["image_id"] = sys.argv[1][2:]
 print(" ".join(f"--{k} {c[k]}" for k in sys.argv[2].split()))' "$IMG" "$PARAMS" > /tmp/zkotc-set-config.args
     stellar contract invoke --id "$ESCROW_ID" --network testnet --source "$STELLAR_IDENTITY" -- set_config $(cat /tmp/zkotc-set-config.args)
     echo "escrow now accepts $IMG"
+    echo "$IMG" > prover/IMAGE_ID && echo "prover/IMAGE_ID updated — commit it"
   else
     echo "   run again with --switch, or: stellar contract invoke --id $ESCROW_ID --source $STELLAR_IDENTITY -- set_config … --image_id ${IMG:2}"
   fi

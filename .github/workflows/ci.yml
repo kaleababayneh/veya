@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lib:
+    name: zkotc-lib tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: zkotc-lib
+      # real e-mail samples are private (git-ignored); those tests skip themselves
+      - run: cargo test --manifest-path zkotc-lib/Cargo.toml
+
+  escrow:
+    name: escrow contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+      - run: cargo test --manifest-path contracts/escrow/Cargo.toml
+
+  web:
+    name: web lint, types, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_ESCROW_ID: CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG
+          NEXT_PUBLIC_PROVER_URL: https://4-239-243-216.sslip.io/gpu
+
+  image-id:
+    name: pinned guest image id is well-formed and documented
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          id=$(tr -d '[:space:]' < prover/IMAGE_ID)
+          echo "pinned: $id"
+          [[ "$id" =~ ^0x[0-9a-f]{64}$ ]] || { echo "prover/IMAGE_ID must be 0x + 64 hex"; exit 1; }
+          grep -q "${id:2:8}" contracts/DEPLOYMENTS.md || { echo "contracts/DEPLOYMENTS.md does not mention image id ${id:2:8}…"; exit 1; }
