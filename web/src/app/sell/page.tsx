@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
 import { escrow, getConfig, payeeHashHex, send, unwrapResult, explainError, ERROR_HELP, type EscrowConfig } from "@/lib/escrow";
 import { sealPayee } from "@/lib/reveal";
-import { BANKS, bankFromIban } from "@/lib/banks";
+import { BANKS, bankFromIban, normalizeIban, isTrIbanShape, ibanChecksumOk, formatIban } from "@/lib/banks";
 import { BankSelect } from "@/components/BankSelect";
 import { TOKENS } from "@/lib/tokens";
 import { fmtTRY, parseToken, parseTRY, nowSec, bytesToHex } from "@/lib/format";
@@ -52,11 +52,13 @@ export default function Sell() {
     if (!address) return connect();
     if (!cfg) return setErr("Escrow configuration not loaded yet");
     if (!bankCode) return setErr("Pick your bank");
-    if (!bankFromIban(iban)) return setErr("Enter a valid Turkish IBAN (TR + 24 digits) of a listed bank");
+    if (!isTrIbanShape(iban)) return setErr(`Enter a Turkish IBAN: TR followed by 24 digits (you typed ${normalizeIban(iban).length} characters; spaces are fine)`);
+    if (!ibanChecksumOk(iban)) return setErr("This IBAN's check digits do not add up; a digit is probably mistyped");
+    if (!bankFromIban(iban)) return setErr(`The bank code ${normalizeIban(iban).slice(4, 9)} in this IBAN is not in the bank list yet`);
     if (bankCode && ibanBank && ibanBank.code !== bankCode) return setErr(`This IBAN belongs to ${ibanBank.name}; pick that bank or correct the IBAN`);
     try {
       setBusy("Encrypting payee details…");
-      const cleanIban = iban.replace(/\s+/g, "").toUpperCase();
+      const cleanIban = normalizeIban(iban);
       const cleanName = name.trim();
       const [hashHex, blob] = await Promise.all([payeeHashHex(cleanIban, cleanName), sealPayee({ iban: cleanIban, name: cleanName, bank: BANKS.find((b) => b.code === bankCode)?.name }, bytesToHex(cfg.reveal_pubkey))]);
       setBusy("Confirm in wallet…");
@@ -141,8 +143,10 @@ export default function Sell() {
               className={`${inputCls} mono ${ibanBank && bankCode && ibanBank.code !== bankCode ? "border-danger" : ""}`}
               value={iban}
               onChange={(e) => {
-                setIban(e.target.value);
-                const b = bankFromIban(e.target.value);
+                // keep the display grouped in fours; everything that is not a letter/digit is dropped
+                const v = normalizeIban(e.target.value).length > 26 ? e.target.value : formatIban(e.target.value);
+                setIban(v);
+                const b = bankFromIban(v);
                 if (b && b.supported && !bankCode) setBankCode(b.code);
               }}
               placeholder="TR33 0006 1005 1978 6457 8413 26"

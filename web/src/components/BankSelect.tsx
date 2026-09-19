@@ -4,13 +4,28 @@ import { useEffect, useRef, useState } from "react";
 import { BANKS, type Bank } from "@/lib/banks";
 
 export function BankLogo({ bank, size = 24 }: { bank: Bank; size?: number }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <span
+        aria-hidden
+        className="inline-grid shrink-0 place-items-center rounded-full font-bold text-white"
+        style={{ width: size, height: size, background: bank.color, fontSize: Math.round(size * 0.42), letterSpacing: "-0.02em" }}
+      >
+        {bank.initials}
+      </span>
+    );
+  }
+
   return (
     <span
       aria-hidden
-      className="inline-grid shrink-0 place-items-center rounded-full font-bold text-white"
-      style={{ width: size, height: size, background: bank.color, fontSize: Math.round(size * 0.42), letterSpacing: "-0.02em" }}
+      className="inline-grid shrink-0 place-items-center overflow-hidden rounded-md bg-white ring-1 ring-black/10"
+      style={{ width: size * 1.75, height: size, padding: Math.max(1, Math.round(size * 0.1)) }}
     >
-      {bank.initials}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={bank.logo} alt="" className="h-full w-full object-contain" onError={() => setFailed(true)} />
     </span>
   );
 }
@@ -40,7 +55,10 @@ export function BankSelect({ value, onChange, className = "" }: { value: string;
     <div ref={box} className={`relative ${className}`}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((o) => !o);
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-panel px-3 py-2.5 text-left text-sm hover:border-accent/60"
@@ -59,7 +77,10 @@ export function BankSelect({ value, onChange, className = "" }: { value: string;
               role="option"
               aria-selected={b.code === value}
               aria-disabled={!b.supported}
-              onClick={() => {
+              onClick={(e) => {
+                // Field wraps controls in a <label>; without this, the browser forwards a synthetic
+                // click to the toggle button (the label's control) and re-opens/closes it.
+                e.preventDefault();
                 if (!b.supported) return;
                 onChange(b.code);
                 setOpen(false);
