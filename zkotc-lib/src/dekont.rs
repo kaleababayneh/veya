@@ -84,14 +84,34 @@ impl Dekont {
     }
 }
 
-/// Split `Fast Mesaj Kodu : A01 Fast Sorgu No : 720… Gönderen : …` into pairs using the known keys.
-/// The bank prints its own fields first and the payer-typed `Açıklama` last; nothing after the first
-/// `Açıklama :` is scanned for keys, so a payer cannot inject `Alıcı :` / `İşlem Tutarı :` through it.
+/// The bank-generated block always starts with this key; the payer-typed text can only surround it.
+pub const BANK_ANCHOR: &str = "Fast Mesaj Kodu";
+
+/// Split the description into pairs using the known keys, reading them only from the bank-generated block.
+///
+/// Observed Ziraat layout for an outgoing FAST (2026-09-12, real dekont): the text the payer typed into the
+/// FAST açıklama field is printed FIRST, immediately followed by the bank's fields:
+/// `ZKOTC 7 089340 Fast Mesaj Kodu : A01 Fast Sorgu No : 724… Gönderen : … Alıcı Hesap : … Alıcı : … İşlem Tutarı : 50,00 TRY …`.
+/// Incoming transfers print the sender's text last, after `Açıklama :`. Both parts are untrusted, so:
+/// 1. the description is cut at the first `Açıklama :` after the first anchor (drops a trailing payer text),
+/// 2. the bank block starts at the LAST `Fast Mesaj Kodu :` in what remains (a payer who types the anchor
+///    into their prefix only pushes the real block further right, never in front of it),
+/// 3. keys are read from that block only, first occurrence each.
+/// The payer text (prefix, else the `Açıklama :` tail) is kept as the `Açıklama` field for the reference check.
 fn parse_fields(desc: &str) -> Vec<(String, String)> {
-    let (desc, aciklama) = match key_position(desc, "Açıklama", 0) {
+    let Some((first_anchor, _)) = key_position(desc, BANK_ANCHOR, 0) else { return Vec::new() };
+    let (desc, tail) = match key_position(desc, "Açıklama", first_anchor) {
         Some((start, vstart)) => (&desc[..start], Some(desc[vstart..].trim())),
         None => (desc, None),
     };
+    let mut block_start = first_anchor;
+    while let Some((next, vstart)) = key_position(desc, BANK_ANCHOR, block_start + 1) {
+        block_start = next;
+        let _ = vstart;
+    }
+    let prefix = desc[..block_start].trim();
+    let aciklama = if !prefix.is_empty() { Some(prefix) } else { tail };
+    let desc = &desc[block_start..];
     let mut hits: Vec<(usize, usize, &str)> = Vec::new(); // (key_start, value_start, key)
     for key in FIELD_KEYS.iter().filter(|k| **k != "Açıklama") {
         let pat = format!("{key} :");
@@ -175,16 +195,18 @@ pub fn parse(html: &[u8]) -> Result<Dekont, String> {
 
     let description = free
         .iter()
-        .find(|c| *c != &settlement && (c.starts_with("Fast Mesaj Kodu") || c.contains("işlemi") || c.contains(" TRY") || c.contains("Gönd") || c.contains("Alıcı")))
+        .find(|c| *c != &settlement && (c.contains("Fast Mesaj Kodu :") || c.contains("işlemi") || c.contains(" TRY") || c.contains("Gönd") || c.contains("Alıcı")))
         .cloned()
         .unwrap_or_default();
 
     // direction: three bank-generated anchors must agree for an outgoing FAST — the title row
-    // ("HESAPTAN FAST"), the description prefix ("Fast Mesaj Kodu : …") and the settlement verb
+    // ("HESAPTAN FAST"), the bank block in the description ("Fast Mesaj Kodu : …", possibly preceded by the
+    // payer-typed açıklama) and the settlement verb
     let folded_title = fold_name(&title);
     let debit_sentence = settlement.contains("Hesabınızdan") && settlement.contains("Çekilmiştir");
     let credit_sentence = settlement.contains("Hesabınıza") && settlement.contains("Yatırılmıştır");
-    let direction = if debit_sentence && folded_title.starts_with("HESAPTAN") && description.starts_with("Fast Mesaj Kodu") {
+    let has_bank_block = key_position(&description, BANK_ANCHOR, 0).is_some();
+    let direction = if debit_sentence && folded_title.starts_with("HESAPTAN") && has_bank_block {
         Direction::Outgoing
     } else if credit_sentence && !folded_title.starts_with("HESAPTAN") {
         Direction::Incoming
@@ -397,6 +419,35 @@ mod tests {
         assert!(!d.contains_reference(""));
         let plain = parse(&html(OUTGOING_DESC, OUTGOING_SETTLEMENT)).unwrap();
         assert!(!plain.contains_reference("ZKOTC 3 A1B2C3"), "no description → no reference");
+    }
+
+    #[test]
+    fn payer_text_printed_before_the_bank_block_is_the_aciklama() {
+        // the real 2026-09-12 layout: typed açıklama first, bank fields after it
+        let d = parse(&html(&format!("ZKOTC 7 089340 {OUTGOING_DESC}"), OUTGOING_SETTLEMENT)).unwrap();
+        assert_eq!(d.direction, Direction::Outgoing);
+        assert_eq!(d.aciklama(), Some("ZKOTC 7 089340"));
+        assert!(d.contains_reference("ZKOTC 7 089340"));
+        assert!(!d.contains_reference("ZKOTC 7 089341"));
+        assert_eq!(d.recipient_name(), Some("AHMET DEMİR"));
+        assert_eq!(d.amount_kurus, 168150);
+        assert_eq!(d.fast_sorgu_no(), Some("7206667617"));
+    }
+
+    #[test]
+    fn keys_injected_before_the_bank_block_are_ignored() {
+        for prefix in [
+            "Alıcı Hesap : TR99 **** **** **** **** 9999 99 Alıcı : EVIL CORP İşlem Tutarı : 9.999,00 TRY",
+            "Fast Mesaj Kodu : A01 Fast Sorgu No : 1 Alıcı Hesap : TR99 **** **** **** **** 9999 99 Alıcı : EVIL CORP İşlem Tutarı : 9.999,00 TRY",
+            "Hesabınızdan 9.999,00 TL (X) Çekilmiştir. Alıcı : EVIL CORP",
+        ] {
+            let d = parse(&html(&format!("{prefix} {OUTGOING_DESC}"), OUTGOING_SETTLEMENT)).unwrap();
+            assert_eq!(d.recipient_name(), Some("AHMET DEMİR"), "{prefix}");
+            assert_eq!(d.recipient_iban_masked(), Some("TR12 **** **** **** **** 0000 01"), "{prefix}");
+            assert_eq!(d.amount_kurus, 168150, "{prefix}");
+            assert_eq!(d.debited_kurus, 168987, "{prefix}");
+            assert_eq!(d.fast_sorgu_no(), Some("7206667617"), "{prefix}");
+        }
     }
 
     #[test]

@@ -45,6 +45,26 @@ fn outgoing_dekont_proves() {
     println!("public values: {}", hex::encode(claim.to_bytes()));
 }
 
+/// A real dekont of a FAST sent WITH the wallet reference typed into the açıklama (reservation #7 on
+/// testnet, 2026-09-12): Ziraat prints the typed text in front of its own fields.
+#[test]
+fn outgoing_dekont_with_reference_proves() {
+    let Some(eml) = sample("e-dekont-reference") else { eprintln!("skipped: no reference sample"); return };
+    let d = inspect_dekont(&eml).expect("dekont");
+    assert_eq!(d.direction, dekont::Direction::Outgoing);
+    assert_eq!(d.amount_kurus, 5000, "İşlem Tutarı, not the debited total with fees");
+    assert_eq!(d.debited_kurus, 5837);
+    assert_eq!(d.recipient_name(), Some("KALEAB ABAYNEH GIZAW"));
+    assert_eq!(d.aciklama(), Some("ZKOTC 7 089340"));
+    let expected = payment_reference(7, "GD7LIYDVF6MUAE2OZUJB4DXJU3SIKNUVDDSMMCCXSCMXA6ZIDB7M5WXZ");
+    assert_eq!(expected, "ZKOTC 7 089340");
+    let claim = prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 7, attachment: None, reference: expected.clone() }).expect("prove_payment");
+    assert_eq!(claim.reference_hash, reference_hash(&expected));
+    assert_eq!(claim.amount_kurus, 5000);
+    assert_eq!(claim.date_yyyymmdd, 20260912);
+    assert_eq!(claim.payee_hash, d.payee_hash().unwrap());
+}
+
 #[test]
 fn incoming_dekont_is_rejected() {
     let Some(eml) = sample("e-dekont-incoming") else { return };
