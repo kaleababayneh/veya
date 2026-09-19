@@ -5,7 +5,7 @@ import { AdStatus, ReservationStatus } from "@/contracts/escrow";
 import { listAds, listReservations, getConfig, explainError, quoteKurus, tokensForKurus, type Ad, type EscrowConfig, type Reservation } from "@/lib/escrow";
 import { fmtToken, fmtTRY, fmtDate, short } from "@/lib/format";
 import { TOKENS, tokenByAddress } from "@/lib/tokens";
-import { Alert, Button, Empty, Spinner } from "@/components/ui";
+import { Alert, Button, Empty, Skeleton } from "@/components/ui";
 import { config, contractUrl } from "@/lib/config";
 
 export default function Market() {
@@ -92,9 +92,7 @@ export default function Market() {
         {err && <Alert kind="error">{err}</Alert>}
         {!config.escrowId && <Alert kind="warn">Escrow contract id is not configured (NEXT_PUBLIC_ESCROW_ID).</Alert>}
         {ads === null ? (
-          <div className="flex items-center gap-2 text-muted">
-            <Spinner /> Loading ads from Soroban RPC…
-          </div>
+          <div className="rounded-2xl border border-line p-5"><Skeleton lines={4} /></div>
         ) : rows.length === 0 ? (
           <Empty title="No ads with liquidity right now">
             Be the first maker: <Link className="underline" href="/sell">post an ad</Link>.

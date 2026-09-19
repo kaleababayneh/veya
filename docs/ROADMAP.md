@@ -77,15 +77,15 @@ Ordered by risk. "You" = needs a real bank transfer or a wallet you hold; "me" =
 - [x] **Prover auth and limits** (done 12 Sep): `/api/prove` — wallet-signed job creation, live reservation required on-chain, prover token server-only. Per-wallet cap not added (the on-chain gate bounds abuse: ≤2 active reservations per wallet).
 - [x] **Prover restart** (done 12 Sep): on-start hook on the box, "prover offline" banner on step 3. SQLite job store deferred: a restart only loses in-flight jobs and the buyer re-uploads.
 - [x] **Image id pin + CI** (done 12 Sep): `prover/IMAGE_ID`, `scripts/check-image-id.sh`, GitHub Actions (lib, contract, web, pin check).
-- [ ] **Every path once on testnet** (you + me, 1 h): USDC ad, unpaid reservation expiring, maker release after the window then `claim_bond`, `reclaim_bond`.
+- [~] **Every path once on testnet** (12 Sep): maker release after the protection window ✔ (#1, bond held 3 days, buyer sees the bond-claim view), `reclaim_bond` guard while the window is open ✔ (`BondHeld`), unpaid reservation expiring ✔ (#10, released after its hour). Still needed: `claim_bond` with a real proof (you, one transfer on a released reservation), `reclaim_bond` after #1's window (15 Sep), a USDC ad (needs testnet USDC).
 - [x] **Visitors without a Ziraat account** (done 12 Sep): "Recent trades" on the market page links to settled reservations; Friendbot hint in the rules box. Open: show the settle transaction and decoded journal on the settled reservation page (needs the tx hash, i.e. an event lookup).
 
 ### 15–16 Sep — polish
-- [ ] Toasts for transaction results, skeleton loaders, explicit empty and error states, wallet-not-installed hint.
-- [ ] "Continue on a computer" link on the phone view (paying happens on the phone, proving on a laptop).
-- [ ] Turkish copy for steps 2 and 3 (bank-facing labels already in Turkish).
-- [ ] Maker dashboard: per-ad row with active/settled counts, bond state, one-click price change.
-- [ ] Seed 3–4 ads under different nicknames; a second Ziraat-paying tester if available.
+- [x] Toasts for transaction results, skeleton loaders, wallet-not-installed hint (done 12 Sep).
+- [x] "Copy link → continue on a computer" on the phone view (done 12 Sep).
+- [x] EN/TR toggle in the nav; buyer steps 1–4 translated (done 12 Sep).
+- [x] Maker dashboard: `/me` lists ads with free/reserved liquidity, completed count, bond free/earmarked, and reservations on my ads; price change and close are on the ad page (already there, confirmed 12 Sep).
+- [x] Seeded ads (12 Sep): five ads live (kaleab ₺40, kaloş ₺20, peter ₺10, ayşe ₺41.50, mehmet ₺39.90), all paying the same test IBAN. Open: a second Ziraat-paying tester.
 - [x] Trust statement on How-it-works (done 12 Sep): what the operator can and cannot do today.
 
 ### 17 Sep — submission

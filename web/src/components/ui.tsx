@@ -84,6 +84,17 @@ export function TxLink({ hash, label = "View transaction" }: { hash: string; lab
   );
 }
 
+/** Grey placeholder blocks while data loads from Soroban RPC. */
+export function Skeleton({ lines = 3, className = "" }: { lines?: number; className?: string }) {
+  return (
+    <div className={`animate-pulse space-y-3 ${className}`} aria-busy="true">
+      {Array.from({ length: lines }).map((_, i) => (
+        <div key={i} className="h-4 rounded bg-panel-2" style={{ width: `${85 - (i % 3) * 20}%` }} />
+      ))}
+    </div>
+  );
+}
+
 export function Spinner() {
   return <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />;
 }

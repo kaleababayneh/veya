@@ -1,31 +1,43 @@
-# zkOTC — P2P TRY ⇄ XLM/USDC on Stellar with zero-knowledge proof of bank payment
+# zkOTC — P2P TRY ⇄ XLM/USDC on Stellar, settled by a zero-knowledge proof of the bank transfer
 
-Sellers escrow XLM or USDC in a Soroban contract. Buyers pay TRY with a normal **FAST** bank transfer, ask
-**Ziraat Bankası** to e-mail the transfer's e-dekont, and prove — in zero knowledge — that the bank's DKIM-signed e-mail
-contains that payment. The proof (a RISC Zero Groth16 receipt) is verified on-chain by the RISC Zero verifier
-router — the same Nethermind-built verifier Stellar's Confidential Token preview uses — and the escrow releases.
+A peer-to-peer market like Binance P2P, minus the platform holding money or judging disputes. Makers post XLM or USDC
+liquidity with a TRY price in a Soroban escrow. A buyer reserves an amount, pays the maker by an ordinary **FAST** transfer
+from a **Ziraat** account, and asks the bank to e-mail the transfer's *e-dekont*. That e-mail is DKIM-signed by Ziraat; a
+RISC Zero zkVM program verifies the signature and reads the receipt, a GPU wraps it into a Groth16 proof in about **15 s**,
+and the escrow pays out only when Stellar's RISC Zero verifier router accepts the proof. No oracle, no custodian, no
+screenshots: the evidence is the bank's own RSA signature, and a payment reference typed into the transfer binds it to the
+claiming wallet.
 
-No oracle, no custodian, no mocks: the evidence is the bank's own RSA signature.
+**Try it:** https://zkotc.vercel.app (Stellar testnet, Freighter). Paying needs a Ziraat account; anyone can post an ad with
+testnet XLM ([Friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet)) or open a settled trade from the
+market page to see a real proof. Built for the Stellar Pro Hackathon, Istanbul, 18–20 September 2026.
+
+| | |
+|---|---|
+| Proof time | ~15 s end to end on a rented RTX 4090 (STARK 5 s, Groth16 wrap 3 s, the rest is I/O); 84 min on a 4-vCPU CPU box |
+| Cost | ≈ $0.003 per proof at $0.36/h; the box is rented per day from a one-command runbook (`docs/GPU.md`) |
+| On-chain | 260-byte Groth16 seal + 184-byte journal, verified by the RISC Zero verifier router (Nethermind) in one settlement transaction |
+| First real trade | 12 Sep 2026: ₺50 FAST with reference `ZKOTC 7 089340`, proof 12.8 s, settled on testnet (reservation #7) |
+| Trust today | funds are safe from other users and the counterparty; the single operator can read makers' IBANs and change the accepted zkVM program — stated on the site, timelock + enclave on the roadmap |
 
 ```
-seller ──create_offer──▶ ┌────────────────┐  verify(seal, image_id,  ┌──────────────────────────────┐
-                         │  otc-escrow    │──sha256(journal))───────▶│ RISC Zero verifier router    │ (BN254 g1_mul + pairing_check)
-buyer  ──lock──────────▶ │  (Soroban)     │◀──ok/err─────────────────│ → Groth16Verifier (Nethermind)│
-buyer  ──fulfill(j,seal)▶└────────────────┘                          └──────────────────────────────┘
-                              ▲  seal = 4-byte selector ‖ Groth16 (260 B), j = 184-byte journal
-                              │
-        .eml ──▶ zkotc-server (RISC Zero zkVM: DKIM RSA-SHA256 → MIME → Ziraat e-dekont) ──▶ seal, journal
+maker  ──create_ad(liquidity, price, limits, sealed IBAN)──▶ ┌──────────────────┐
+buyer  ──reserve(amount) ─ reveal IBAN (wallet signature) ──▶ │  otc-escrow v5   │   verify(seal, image_id, sha256(journal))
+buyer  ──FAST ₺ + "ZKOTC<id><code>" ─ declare_paid ────────▶ │  (Soroban)       │ ─────────────────────────────────────────▶ RISC Zero verifier router → Groth16Verifier
+buyer  ──settle(journal, seal) ────────────────────────────▶ └──────────────────┘ ◀── ok ── pays buyer, frees the maker's bond slice
+                                                                     ▲
+   e-dekont .eml ──▶ /api/prove (wallet-signed, on-chain check) ──▶ zkotc-server on the GPU box: DKIM RSA-SHA256 → MIME → Ziraat parser → STARK → Groth16
 ```
 
 ## Repository
-| Path | What | Status |
+| Path | What | Tests |
 |---|---|---|
-| `contracts/escrow` | Offer lifecycle, token custody, journal checks, nullifiers, fee, pause, upgrade; calls the RISC Zero router | 16 tests |
-| `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat e-dekont parser, 184-byte journal | 8 tests incl. a real e-dekont e-mail |
-| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x9ec8ddc3…7cbf`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | 5.19M cycles on a real outgoing e-dekont |
-| `contracts/risc0-verifier-deployment.toml` | testnet deployment of [NethermindEth/stellar-risc0-verifier](https://github.com/NethermindEth/stellar-risc0-verifier) (router, timelock, Groth16 verifier v3.0.0, emergency stop) | routed, selector `73c457ba` |
-| `web` | Next.js 16 app: offers, sell, reserve → pay → upload .eml → claim, wallet via Stellar Wallets Kit | `next build` clean |
-| `docs` | PRD, UX copy, demo script, QA checklist | |
+| `contracts/escrow` | Market escrow v5: ads, reservations, quotes, `declare_paid` protection, per-reservation bond slices, wallet-bound reference, nullifiers, admin/upgrade; calls the RISC Zero router | 21 |
+| `zkotc-lib` | zkVM-agnostic core: DKIM verifier (RFC 6376), MIME/attachment extraction, Ziraat e-dekont parser hardened against description injection, 184-byte journal | 16 unit + 7 on real e-mails |
+| `prover` | RISC Zero guest (`prover/IMAGE_ID`), `zkotc` CLI, `zkotc-server` (jobs API, GPU Groth16 via ICICLE or the reference CPU prover) | |
+| `web` | Next.js 16: market, ads, reservation wizard, `/api/reveal` (sealed IBAN → reserving wallet), `/api/prove` (gate to the prover) | lint + types + build in CI |
+| `scripts/gpu` | Rent-and-deploy runbook for the GPU prover (artifacts on an Azure host, HTTPS via Caddy, escrow switch) | |
+| `docs` | `ROADMAP.md` (status + plan), `GPU.md`, `OPERATIONS.md`, PRD, demo script, QA checklist | |
 
 ## Proven end to end (2026-09-08 → full settlement 2026-09-10)
 **First complete settlement on testnet, 2026-09-10 01:00 Istanbul:** offer #3 on escrow v4 (10 XLM for ₺50), reserved and
@@ -48,11 +60,6 @@ CUDA Groth16 wrap is not used because it crashes in 3.0.x ([risc0#3785](https://
 reference CPU prover remains as a fallback engine (`GROTH16_NATIVE_DIR`, 19 s).
 **Runbook: [`docs/GPU.md`](docs/GPU.md)** — rent a box and
 `scripts/gpu/deploy.sh "<ssh line>" --switch` brings a prover up in ~4 minutes from prebuilt artifacts.
-
-## Live demo
-**https://zkotc.vercel.app** (Stellar testnet; deployed 2026-09-10 on request). The site is served over HTTPS, so the GPU prover is reached
-through the Azure VM's TLS endpoint: `https://4-239-243-216.sslip.io/gpu` → Caddy `handle_path /gpu/*` → `http://<gpu box>:11267`
-(`docs/OPERATIONS.md`). The Vercel project carries the `NEXT_PUBLIC_*` config plus `REVEAL_SECRET_KEY` (sensitive) for `/api/reveal`.
 
 ## Testnet deployments (Protocol 28)
 | Contract | Id |
@@ -137,5 +144,14 @@ Escrow checks: router.verify(seal, image_id, sha256(journal)) · reservation_id 
 ## History
 The first iteration used SP1 with our own Soroban Groth16 verifier (verified a real SP1 proof on-chain). It was replaced by RISC Zero for ecosystem alignment; that code lives at git tag `sp1-backend`.
 
-## Trust & limits (v1)
-Only the bank can forge a DKIM signature (RSA-1024 key, pinned and rotatable). The prover sees the dekont of that one transfer; run your own or use TEE proving. Payer must bank with Ziraat. If a buyer pays after the 60-min lock ends and the seller releases the lock, the on-chain claim fails — the UI blocks payments with < 15 min left and warns sellers before releasing.
+## Trust & limits (testnet, September 2026)
+- **What cannot happen:** nobody takes tokens without a valid proof of a bank transfer to the maker's committed IBAN for that
+  reservation's amount and date window; a receipt cannot be forged or edited (Ziraat's DKIM signature covers the body hash);
+  a stolen e-mail is useless to any wallet but the one its `ZKOTC<id><code>` reference names; a receipt settles once (nullifier).
+- **What the operator can do today:** read makers' bank details (the reveal key is held server-side), see the e-mails buyers
+  upload (memory only), and change the accepted guest image id, DKIM key set or contract code with the admin key, with no delay.
+  Every such change is a public transaction. Production plan: timelock on admin actions, reproducible guest build, multisig, and
+  the reveal key inside an attested enclave (`docs/ROADMAP.md` §C).
+- **Other limits:** payers must bank with Ziraat; Ziraat's DKIM key is RSA-1024 (only the bank can forge, but it is a weak key by
+  today's standards); the .eml must be downloaded from a computer (phones cannot export it); a proof after the 3-day bond window
+  is not compensated; a buyer can delay a maker by the 2-hour protection window without paying.

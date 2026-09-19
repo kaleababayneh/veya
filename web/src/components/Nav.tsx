@@ -4,9 +4,11 @@ import { usePathname } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
 import { short } from "@/lib/format";
 import { Button } from "./ui";
+import { useI18n } from "@/lib/i18n";
 
 export function Nav() {
   const { address, connect, disconnect, connecting, ready } = useWallet();
+  const { lang, setLang } = useI18n();
   const path = usePathname();
   const link = (href: string, label: string) => (
     <Link href={href} className={`rounded-lg px-3 py-1.5 text-sm ${path === href ? "bg-panel-2 font-medium" : "text-muted hover:text-fg"}`}>
@@ -29,6 +31,15 @@ export function Nav() {
           zkOTC <span className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-warn">testnet</span>
         </Link>
         <nav className="hidden items-center gap-1 sm:flex">{links}</nav>
+        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="rounded-md border border-line px-2 py-1 text-xs text-muted hover:text-fg"
+          onClick={() => setLang(lang === "en" ? "tr" : "en")}
+          title={lang === "en" ? "Alıcı adımlarını Türkçe göster" : "Show the buyer steps in English"}
+        >
+          {lang === "en" ? "TR" : "EN"}
+        </button>
         {address ? (
           <Button variant="ghost" onClick={disconnect} title={address}>
             <span className="h-2 w-2 rounded-full bg-ok" /> {short(address, 5)}
@@ -38,6 +49,7 @@ export function Nav() {
             {connecting ? "Connecting…" : "Connect wallet"}
           </Button>
         )}
+        </div>
       </div>
       {/* phones: the same links as a scrollable row under the header */}
       <nav className="flex gap-1 overflow-x-auto px-3 pb-2 sm:hidden">{links}</nav>

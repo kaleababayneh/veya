@@ -10,7 +10,9 @@ import { requestProof, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJ
 import { tokenByAddress } from "@/lib/tokens";
 import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, nowSec, short, hexToBuffer, bytesToHex, paymentReference } from "@/lib/format";
 import { config } from "@/lib/config";
-import { Alert, BackLink, Button, Card, ReservationBadge, Spinner, TxLink } from "@/components/ui";
+import { Alert, BackLink, Button, Card, ReservationBadge, Skeleton, Spinner, TxLink } from "@/components/ui";
+import { useToast } from "@/components/Toast";
+import { useI18n } from "@/lib/i18n";
 import { Countdown } from "@/components/Countdown";
 
 export default function ReservationPage() {
@@ -19,6 +21,8 @@ export default function ReservationPage() {
   const search = useSearchParams();
   const wallet = useWallet();
   const { connect, signTransaction, signMessage } = wallet;
+  const { toast } = useToast();
+  const { t: tr } = useI18n();
 
   const [r, setR] = useState<Reservation | null>(null);
   const [ad, setAd] = useState<Ad | null>(null);
@@ -68,6 +72,7 @@ export default function ReservationPage() {
       setBusy(label);
       const { hash } = await fn();
       setLastTx({ label, hash });
+      toast({ kind: "ok", title: label, body: <TxLink hash={hash} /> });
       await refresh();
     } catch (e) {
       const m = explainError(e);
@@ -82,7 +87,7 @@ export default function ReservationPage() {
     return (
       <div className="space-y-4">
         <BackLink />
-        {err ? <Alert kind="error">{err}</Alert> : <div className="flex items-center gap-2 text-muted"><Spinner /> Loading reservation #{idParam}…</div>}
+        {err ? <Alert kind="error">{err}</Alert> : <Skeleton lines={6} />}
       </div>
     );
   }
@@ -168,7 +173,7 @@ export default function ReservationPage() {
       </div>
 
       {err && <Alert kind="error">{err}</Alert>}
-      {lastTx && (
+      {lastTx && lastTx.label === "Reserved" && (
         <Alert kind="ok">
           {lastTx.label}. <TxLink hash={lastTx.hash} />
         </Alert>
@@ -231,7 +236,7 @@ export default function ReservationPage() {
       )}
 
       <details className="rounded-2xl border border-line bg-panel p-5 text-sm">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">Reservation details</summary>
+        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">{tr("Reservation details")}</summary>
         <dl className="mt-3 grid gap-3 sm:grid-cols-2">
           <div><dt className="text-muted">{isBuyer ? "You send" : "Buyer sends"}</dt><dd className="font-semibold">{fmtTRY(r.try_amount_kurus)} by FAST from Ziraat</dd></div>
           <div><dt className="text-muted">{isBuyer ? "You receive" : "Buyer receives"}</dt><dd>{fmtToken(payout, ad.decimals)} {t.symbol} (after {feeBps / 100}% fee)</dd></div>
@@ -249,19 +254,21 @@ export default function ReservationPage() {
 
 function Copy({ value, label }: { value: string; label?: string }) {
   const [done, setDone] = useState(false);
+  const { t: tr } = useI18n();
   return (
     <button
       type="button"
       className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:bg-panel-2"
       onClick={() => navigator.clipboard?.writeText(value).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => {})}
     >
-      {done ? "copied ✓" : (label ?? "copy")}
+      {done ? tr("copied ✓") : (label ?? tr("copy"))}
     </button>
   );
 }
 
 function StepCard({ n, title, state, summary, children }: { n: number; title: string; state: "done" | "active" | "todo"; summary?: React.ReactNode; children?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const { t: tr } = useI18n();
   const expanded = state === "active" || (state === "done" && open);
   return (
     <div className={`rounded-2xl border p-4 ${state === "active" ? "border-accent bg-panel shadow-sm" : state === "done" ? "border-line bg-panel" : "border-dashed border-line opacity-60"}`}>
@@ -274,7 +281,7 @@ function StepCard({ n, title, state, summary, children }: { n: number; title: st
           </div>
         </div>
         {state === "done" && children && (
-          <button type="button" className="text-xs text-muted underline decoration-dotted" onClick={() => setOpen((o) => !o)}>{open ? "hide" : "show"}</button>
+          <button type="button" className="text-xs text-muted underline decoration-dotted" onClick={() => setOpen((o) => !o)}>{open ? tr("hide") : tr("show")}</button>
         )}
       </div>
       {expanded && children && <div className="mt-4 space-y-3">{children}</div>}
@@ -295,6 +302,8 @@ function BuyerFlow({
 }) {
   const t = tokenByAddress(ad.token);
   const { signMessage } = useWallet();
+  const { t: tr } = useI18n();
+  const [linkCopied, setLinkCopied] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(true);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -364,27 +373,27 @@ function BuyerFlow({
       {!bond && expired && !paid && <Alert kind="warn">Your reservation timer ended. You can still settle as long as nobody releases it, so finish quickly, or release it and reserve again.</Alert>}
 
       {/* 1 · reveal */}
-      <StepCard n={1} title={bond ? "Where you paid" : "Where to pay"} state={s1} summary={payee ? <>{payee.name} · <span className="mono">{fmtIBAN(payee.iban)}</span></> : undefined}>
+      <StepCard n={1} title={tr(bond ? "Where you paid" : "Where to pay")} state={s1} summary={payee ? <>{payee.name} · <span className="mono">{fmtIBAN(payee.iban)}</span></> : undefined}>
         {!payee ? (
           <>
-            <p className="text-sm text-muted">The maker&apos;s bank details are encrypted on-chain. Sign a message with your wallet to reveal them — no transaction, no fee.</p>
-            <Button className="w-full sm:w-auto" onClick={onReveal} disabled={revealing}>{revealing ? <><Spinner /> Waiting for your wallet…</> : "Reveal bank details"}</Button>
+            <p className="text-sm text-muted">{tr("The maker's bank details are encrypted on-chain. Sign a message with your wallet to reveal them — no transaction, no fee.")}</p>
+            <Button className="w-full sm:w-auto" onClick={onReveal} disabled={revealing}>{revealing ? <><Spinner /> {tr("Waiting for your wallet…")}</> : tr("Reveal bank details")}</Button>
           </>
         ) : !payee.verified ? (
           <Alert kind="error">
             <b>Do not pay.</b> The revealed details ({fmtIBAN(payee.iban)}, {payee.name}) do not match this ad&apos;s on-chain commitment, so no proof could ever settle here. Release the reservation and pick another ad.
           </Alert>
         ) : (
-          <p className="text-sm text-ok">✓ Verified against the maker&apos;s on-chain commitment.</p>
+          <p className="text-sm text-ok">{tr("✓ Verified against the maker's on-chain commitment.")}</p>
         )}
       </StepCard>
 
       {/* 2 · pay + declare */}
-      <StepCard n={2} title={bond ? "Payment declared" : `Send ${fmtTRY(r.try_amount_kurus)} by FAST, then declare it`} state={s2} summary={declared ? <>Declared {fmtDate(r.paid_declared_at)} · protected until {fmtDate(r.lock_expires_at)}</> : undefined}>
+      <StepCard n={2} title={bond ? tr("Payment declared") : `${tr("Send")} ${fmtTRY(r.try_amount_kurus)} ${tr("by FAST, then declare it")}`} state={s2} summary={declared ? <>{tr("Declared")} {fmtDate(r.paid_declared_at)}{r.status === ReservationStatus.Active && <> · {tr("protected until")} {fmtDate(r.lock_expires_at)}</>}</> : undefined}>
         {canPay && (
           <>
             <div className="overflow-hidden rounded-xl border border-line">
-              <div className="bg-panel-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">FAST transfer from your Ziraat account</div>
+              <div className="bg-panel-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">{tr("FAST transfer from your Ziraat account")}</div>
               <dl className="divide-y divide-line text-sm">
                 {[
                   ["Alıcı IBAN", fmtIBAN(payee!.iban), payee!.iban.replace(/\s+/g, "")],
@@ -400,14 +409,14 @@ function BuyerFlow({
               </dl>
             </div>
             <p className="text-xs text-muted">
-              The <b>Açıklama</b> line is required: it ties the payment to your wallet, so nobody who obtains your e-mail can claim in your place.
+              {tr("The Açıklama line is required: it ties the payment to your wallet, so nobody who obtains your e-mail can claim in your place.")}
             </p>
             {!paid && (tooLateToPay ? (
               <Alert kind="error">Less than {config.minMinutesToPay} minutes remain. Do <b>not</b> send money now: release the reservation and reserve again to get a fresh timer.</Alert>
             ) : (
               <>
                 <Button className="w-full sm:w-auto" onClick={onDeclare} disabled={!!busy}>
-                  {busy === "Payment declared on-chain" ? <><Spinner /> Confirm in wallet…</> : "I have sent it — declare on-chain"}
+                  {busy === "Payment declared on-chain" ? <><Spinner /> {tr("Confirm in wallet…")}</> : tr("I have sent it — declare on-chain")}
                 </Button>
                 <p className="text-xs text-muted">
                   Declaring locks the maker out for {cfg ? Number(cfg.proof_window) / 60 : 120} minutes and puts their bond of {fmtToken(r.bond_slice, ad.decimals)} {t.symbol} behind your claim. Only declare after the transfer has left your account.
@@ -419,12 +428,12 @@ function BuyerFlow({
       </StepCard>
 
       {/* 3 · prove */}
-      <StepCard n={3} title="Prove it from Ziraat's e-dekont e-mail" state={s3} summary={job?.dekont ? <>Dekont {fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time} · {fmtTRY(job.dekont.amount_kurus)} · proof ready</> : undefined}>
+      <StepCard n={3} title={tr("Prove it from Ziraat's e-dekont e-mail")} state={s3} summary={job?.dekont ? <>Dekont {fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time} · {fmtTRY(job.dekont.amount_kurus)} · proof ready</> : undefined}>
         {!job ? (
           <>
             <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-              <li><b className="text-fg">Ziraat Mobil</b> → Hesap Hareketleri → the ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} transfer → <b className="text-fg">Dekont Gönder</b> → <b className="text-fg">E-posta</b>. The bank e-mails it to your registered address within a minute (subject &quot;e-dekont&quot;).</li>
-              <li>Open that e-mail in <b className="text-fg">Gmail on a computer</b> → ⋮ menu → <b className="text-fg">Show original</b> → <b className="text-fg">Download original</b>, and drop the file below. Do not forward it: forwarding breaks the bank&apos;s signature.</li>
+              <li><b className="text-fg">Ziraat Mobil</b> → {tr("Hesap Hareketleri → the")} ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} {tr("transfer →")} <b className="text-fg">Dekont Gönder</b> → <b className="text-fg">E-posta</b>{tr(". The bank e-mails it to your registered address within a minute (subject \"e-dekont\").")}</li>
+              <li>{tr("Open that e-mail in")} <b className="text-fg">{tr("Gmail on a computer")}</b> → ⋮ {tr("menu →")} <b className="text-fg">Show original</b> → <b className="text-fg">Download original</b>{tr(", and drop the file below. Do not forward it: forwarding breaks the bank's signature.")}</li>
             </ol>
             <label
               className={`flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-5 text-center text-sm ${file ? "border-ok/60 bg-ok/5" : "border-line hover:border-accent/60"}`}
@@ -432,20 +441,26 @@ function BuyerFlow({
               onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }}
             >
               <input type="file" accept=".eml,message/rfc822" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              {file ? <span className="font-medium">{file.name}</span> : <span className="font-medium">Drop the .eml file here, or click to choose it</span>}
+              {file ? <span className="font-medium">{file.name}</span> : <span className="font-medium">{tr("Drop the .eml file here, or click to choose it")}</span>}
               <span className="text-xs text-muted">Apple Mail: File → Save As → Raw Message Source</span>
             </label>
             <label className="flex items-start gap-2 text-xs text-muted">
               <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
               <span>
-                Send this one e-mail to the prover; it is kept in memory only and only hashes, the amount, the date and a nullifier go on-chain.{" "}
-                <button type="button" className="underline" onClick={() => setShowPrivacy((v) => !v)}>{showPrivacy ? "less" : "details"}</button>
+                {tr("Send this one e-mail to the prover; it is kept in memory only and only hashes, the amount, the date and a nullifier go on-chain.")}{" "}
+                <button type="button" className="underline" onClick={() => setShowPrivacy((v) => !v)}>{showPrivacy ? tr("less") : tr("details")}</button>
                 {showPrivacy && <span className="block pt-1">Prover: <span className="mono">{config.proverUrl}</span>{info ? ` · mode ${info.prover_mode} · DKIM key from ${info.dkim_source}` : ""}. The e-mail is checked (DKIM signature, recipient, amount, reference) before proving and discarded when the job ends.</span>}
               </span>
             </label>
             {proverDown && <Alert kind="warn">The prover is offline right now. Your reservation is safe: the declared payment stays protected, and you can upload as soon as it is back.</Alert>}
-            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent || proverDown}>Verify the e-mail and start proving</Button>
-            <p className="text-xs text-muted">Your wallet will ask for a signature first (no transaction, no fee): it proves this reservation is yours before the prover spends GPU time.</p>
+            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent || proverDown}>{tr("Verify the e-mail and start proving")}</Button>
+            <p className="text-xs text-muted">{tr("Your wallet will ask for a signature first (no transaction, no fee): it proves this reservation is yours before the prover spends GPU time.")}</p>
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted sm:hidden">
+              {tr("On a phone? Copy this page's link and open it on a computer for the upload step.")}
+              <button type="button" className="rounded-md border border-line px-2 py-0.5" onClick={() => navigator.clipboard?.writeText(window.location.href).then(() => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }).catch(() => {})}>
+                {linkCopied ? tr("Link copied ✓") : tr("Copy link")}
+              </button>
+            </p>
             {jobErr && <Alert kind="error">{jobErr}</Alert>}
           </>
         ) : (
@@ -479,7 +494,7 @@ function BuyerFlow({
       </StepCard>
 
       {/* 4 · claim */}
-      <StepCard n={4} title={bond ? `Claim the bond: ${prize}` : `Claim your ${prize}`} state={s4}>
+      <StepCard n={4} title={bond ? `Claim the bond: ${prize}` : `${tr("Claim your")} ${prize}`} state={s4}>
         {proved && (
           <>
             <p className="text-sm text-muted">The proof ({(job!.proof!.length - 2) / 2} bytes) is verified by the Soroban verifier contract inside the same transaction that pays you.</p>
@@ -487,7 +502,7 @@ function BuyerFlow({
               <Alert kind="error">The prover&apos;s guest image id does not match the escrow configuration; this proof would fail on-chain. If the prover was updated, reload this page.</Alert>
             )}
             <Button className="w-full sm:w-auto" onClick={() => onClaim(job!.public_values!, job!.proof!)} disabled={!!busy}>
-              {busy ? <><Spinner /> Confirm in wallet…</> : `Claim ${prize}`}
+              {busy ? <><Spinner /> {tr("Confirm in wallet…")}</> : `${tr("Claim")} ${prize}`}
             </Button>
           </>
         )}

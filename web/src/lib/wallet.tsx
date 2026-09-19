@@ -1,6 +1,7 @@
 "use client";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { config } from "./config";
+import { useToast } from "@/components/Toast";
 
 type Kit = typeof import("@creit.tech/stellar-wallets-kit/sdk").StellarWalletsKit;
 
@@ -21,6 +22,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [kit, setKit] = useState<Kit | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     let off: (() => void) | undefined;
@@ -47,10 +49,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const { address } = await kit.authModal();
       setAddress(address);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/closed|cancel|dismiss/i.test(msg)) {
+        toast({ kind: "error", title: "Could not connect a wallet", body: <>Install <a className="underline" href="https://www.freighter.app" target="_blank" rel="noreferrer">Freighter</a> (browser extension), switch it to Testnet, then try again. {msg}</> });
+      }
     } finally {
       setConnecting(false);
     }
-  }, [kit]);
+  }, [kit, toast]);
 
   const disconnect = useCallback(async () => {
     await kit?.disconnect();
