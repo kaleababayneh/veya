@@ -76,15 +76,31 @@ fn split_part(part: &[u8]) -> (Vec<u8>, Vec<u8>) {
 
 fn decode_transfer(data: &[u8], cte: &str) -> Result<Vec<u8>, String> {
     match cte {
-        "base64" => {
+        "base64" => decode_base64_lines(data).or_else(|_| {
+            // non-standard wrapping: fall back to stripping all whitespace first
             let clean: Vec<u8> = data.iter().copied().filter(|c| !c.is_ascii_whitespace()).collect();
             base64::engine::general_purpose::STANDARD
                 .decode(&clean)
                 .map_err(|e| format!("base64: {e}"))
-        }
+        }),
         "quoted-printable" => Ok(decode_qp(data)),
         _ => Ok(data.to_vec()),
     }
+}
+
+/// MIME base64 is wrapped at 76 chars, so every line decodes on its own; this avoids a full copy
+/// of the attachment just to strip line breaks.
+fn decode_base64_lines(data: &[u8]) -> Result<Vec<u8>, String> {
+    let engine = base64::engine::general_purpose::STANDARD;
+    let mut out = Vec::with_capacity(data.len() / 4 * 3);
+    for line in data.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line).trim_ascii();
+        if line.is_empty() {
+            continue;
+        }
+        engine.decode_vec(line, &mut out).map_err(|e| format!("base64: {e}"))?;
+    }
+    Ok(out)
 }
 
 fn decode_qp(data: &[u8]) -> Vec<u8> {

@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context, Result};
 use base64::Engine;
 use methods::{ZKOTC_GUEST_ELF, ZKOTC_GUEST_ID};
 use risc0_ethereum_contracts::encode_seal;
-use risc0_zkvm::{default_executor, default_prover, sha::Digest, ExecutorEnv, ProverOpts};
+use risc0_zkvm::{default_executor, default_prover, sha::Digest, ExecutorEnv, ProverOpts, Receipt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use zkotc_lib::{dkim, PaymentClaim, ProverInput};
@@ -90,23 +90,57 @@ pub fn execute(input: &ProverInput) -> Result<Executed> {
     Ok(Executed { journal, claim, total_cycles })
 }
 
-/// Prove with Groth16 (x86 + `rzup install risc0-groth16`, or `RISC0_DEV_MODE=1` for a fake receipt).
-pub fn prove_groth16(input: &ProverInput) -> Result<ProofBundle> {
-    let env = executor_env(input)?;
-    let info = default_prover().prove_with_opts(env, ZKOTC_GUEST_ELF, &ProverOpts::groth16())?;
-    let receipt = info.receipt;
+/// Prove in two phases: a succinct STARK receipt (the expensive part, optionally cached at
+/// `succinct_cache`), then the Groth16 wrap (`rzup install risc0-groth16` + Docker on x86_64, or
+/// `RISC0_DEV_MODE=1` for a fake receipt). A cached succinct receipt is reused if present, so a
+/// failed wrap never costs the STARK again.
+pub fn prove_groth16(input: &ProverInput, succinct_cache: Option<&std::path::Path>) -> Result<ProofBundle> {
+    let prover = default_prover();
+    let (succinct, total_cycles) = match succinct_cache.filter(|p| p.exists()) {
+        Some(path) => {
+            let receipt: Receipt = bincode::deserialize(&std::fs::read(path)?)?;
+            receipt.verify(ZKOTC_GUEST_ID).context("cached succinct receipt")?;
+            (receipt, 0)
+        }
+        None => {
+            let env = executor_env(input)?;
+            let info = prover.prove_with_opts(env, ZKOTC_GUEST_ELF, &ProverOpts::succinct())?;
+            if let Some(path) = succinct_cache {
+                std::fs::write(path, bincode::serialize(&info.receipt)?)?;
+            }
+            (info.receipt, info.stats.total_cycles)
+        }
+    };
+    let receipt = wrap_groth16(&succinct)?;
+    bundle(&receipt, total_cycles)
+}
+
+/// Groth16 wrap of a succinct receipt (docker + risc0-groth16 on x86_64).
+pub fn wrap_groth16(succinct: &Receipt) -> Result<Receipt> {
+    let receipt = default_prover().compress(&ProverOpts::groth16(), succinct).context("groth16 wrap")?;
     receipt.verify(ZKOTC_GUEST_ID).context("receipt verification")?;
+    Ok(receipt)
+}
+
+fn bundle(receipt: &Receipt, total_cycles: u64) -> Result<ProofBundle> {
     let journal = receipt.journal.bytes.clone();
     let claim = PaymentClaim::from_bytes(&journal).ok_or(anyhow!("journal is not 152 bytes"))?;
-    let seal = encode_seal(&receipt).context("encode_seal")?;
+    let seal = encode_seal(receipt).context("encode_seal")?;
     Ok(ProofBundle {
         image_id: image_id_hex(),
         public_values: format!("0x{}", hex::encode(&journal)),
         journal_digest: format!("0x{}", hex::encode(Sha256::digest(&journal))),
         proof: format!("0x{}", hex::encode(seal)),
         claim: ClaimJson::from(&claim),
-        total_cycles: info.stats.total_cycles,
+        total_cycles,
     })
+}
+
+/// Wrap a previously saved succinct receipt into a proof bundle.
+pub fn wrap_cached(succinct_path: &std::path::Path) -> Result<ProofBundle> {
+    let succinct: Receipt = bincode::deserialize(&std::fs::read(succinct_path)?)?;
+    let receipt = wrap_groth16(&succinct)?;
+    bundle(&receipt, 0)
 }
 
 /// Fetch the DKIM public key (DER SubjectPublicKeyInfo) from DNS TXT `<selector>._domainkey.<domain>`.

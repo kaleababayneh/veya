@@ -124,11 +124,10 @@ pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
         });
     }
 
-    let stmt = extract_statement(&verified.headers, &verified.body)?;
-    let row = stmt
-        .rows
-        .get(input.row_index as usize)
-        .ok_or(Error::RowOutOfRange(input.row_index))?;
+    let attachment = mime::extract_statement_html(&verified.headers, &verified.body).map_err(Error::Mime)?;
+    let (account_iban, row) = statement::parse_row(&attachment, input.row_index as usize)
+        .map_err(|e| if e.contains("out of range") { Error::RowOutOfRange(input.row_index) } else { Error::Statement(e) })?;
+    let row = &row;
     if row.amount_kurus >= 0 {
         return Err(Error::NotOutgoing);
     }
@@ -143,7 +142,7 @@ pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
         recipient_iban_hash: iban_hash(&recipient_iban),
         amount_kurus,
         date_yyyymmdd: row.date_yyyymmdd,
-        nullifier: nullifier(&domain_hash, &stmt.account_iban, row),
+        nullifier: nullifier(&domain_hash, &account_iban, row),
         offer_id: input.offer_id,
     })
 }

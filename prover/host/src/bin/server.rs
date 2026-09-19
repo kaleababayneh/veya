@@ -6,7 +6,8 @@
 //!   GET  /health
 //!
 //! Env: RISC0_DEV_MODE=1 (fake receipts, dev only), PORT (8787), DKIM_DNS=1, CORS_ORIGIN,
-//!      PROVER_TOKEN (if set, `POST /jobs` requires header `x-prover-token`), MAX_JOBS_QUEUED (default 8).
+//!      PROVER_TOKEN (if set, `POST /jobs` requires header `x-prover-token`), MAX_JOBS_QUEUED (default 8),
+//!      SUCCINCT_CACHE_DIR (keep STARK receipts so a failed Groth16 wrap can be retried with `zkotc wrap`).
 //! The e-mail is held in memory only for the duration of the job; bodies are never logged.
 use axum::{
     extract::{DefaultBodyLimit, Path, State},
@@ -131,7 +132,8 @@ async fn main() -> anyhow::Result<()> {
                     j.public_values = Some(format!("0x{}", hex::encode(&ex.journal)));
                     j.claim = Some(ClaimJson::from(&ex.claim));
                 });
-                match prove_groth16(&input) {
+                let cache = std::env::var("SUCCINCT_CACHE_DIR").ok().map(|d| std::path::PathBuf::from(d).join(format!("{id}.succinct")));
+                match prove_groth16(&input, cache.as_deref()) {
                     Ok(b) => set(JobStatus::Done, &|j| {
                         j.proof = Some(b.proof.clone());
                         j.public_values = Some(b.public_values.clone());

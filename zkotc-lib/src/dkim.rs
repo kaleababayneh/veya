@@ -51,13 +51,23 @@ struct Sig {
     body_length: Option<usize>,
 }
 
-/// Normalize line endings to CRLF and split at the first blank line.
+/// Normalize line endings to CRLF (only if some bare LF exists) and split at the first blank line.
 pub fn split_message(eml: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let norm = normalize_crlf(eml);
-    match find(&norm, b"\r\n\r\n") {
+    let owned;
+    let norm: &[u8] = if has_bare_lf(eml) {
+        owned = normalize_crlf(eml);
+        &owned
+    } else {
+        eml
+    };
+    match find(norm, b"\r\n\r\n") {
         Some(i) => (norm[..i + 2].to_vec(), norm[i + 4..].to_vec()),
-        None => (norm, Vec::new()),
+        None => (norm.to_vec(), Vec::new()),
     }
+}
+
+fn has_bare_lf(b: &[u8]) -> bool {
+    b.iter().enumerate().any(|(i, &c)| c == b'\n' && (i == 0 || b[i - 1] != b'\r'))
 }
 
 pub fn parse_headers(block: &[u8]) -> Vec<Header> {
@@ -128,12 +138,26 @@ fn verify_one(headers: &[Header], sig_idx: usize, body: &[u8], pk: &RsaPublicKey
         return Err(DkimError::UnsupportedAlgorithm(sig.algorithm.clone()));
     }
 
-    // body hash
-    let mut canon_body = canonicalize_body(body, sig.canon_body);
-    if let Some(l) = sig.body_length {
-        canon_body.truncate(l);
-    }
-    if Sha256::digest(&canon_body).as_slice() != sig.body_hash.as_slice() {
+    // body hash — simple canonicalization is hashed in place (no copy of the ~100 KB body)
+    let body_digest: [u8; 32] = match (sig.canon_body, sig.body_length) {
+        (Canon::Simple, None) => {
+            let end = simple_body_end(body);
+            let mut h = Sha256::new();
+            h.update(&body[..end]);
+            if end == 0 || !body[..end].ends_with(b"\r\n") {
+                h.update(b"\r\n");
+            }
+            h.finalize().into()
+        }
+        (canon, l) => {
+            let mut canon_body = canonicalize_body(body, canon);
+            if let Some(l) = l {
+                canon_body.truncate(l);
+            }
+            Sha256::digest(&canon_body).into()
+        }
+    };
+    if body_digest[..] != sig.body_hash[..] {
         return Err(DkimError::BodyHashMismatch);
     }
 
@@ -297,6 +321,15 @@ fn canonicalize_header(name: &str, raw_value: &[u8], canon: Canon) -> Vec<u8> {
             v
         }
     }
+}
+
+/// Length of `body` after removing trailing empty lines (simple canonicalization, RFC 6376 §3.4.3).
+fn simple_body_end(body: &[u8]) -> usize {
+    let mut end = body.len();
+    while end >= 4 && &body[end - 4..end] == b"\r\n\r\n" {
+        end -= 2;
+    }
+    end
 }
 
 fn canonicalize_body(body: &[u8], canon: Canon) -> Vec<u8> {

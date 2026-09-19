@@ -28,35 +28,58 @@ pub struct Statement {
     pub rows: Vec<Row>,
 }
 
-pub fn parse(html: &[u8]) -> Result<Statement, String> {
-    let text = String::from_utf8_lossy(html);
+/// Header block (before the `Tarih` column header) and the HTML that follows it.
+fn split_header(html: &[u8]) -> Result<(String, String, &str), String> {
+    let text = std::str::from_utf8(html).map_err(|_| "statement is not UTF-8")?;
     let head_end = text.find("Tarih").ok_or("statement header row not found")?;
     let head_text = strip_tags(&text[..head_end]);
     let account_iban = find_iban(&head_text).ok_or("account IBAN not found in header")?;
     let currency = if head_text.contains("TRY") { "TRY" } else { "?" }.to_string();
+    Ok((account_iban, currency, &text[head_end..]))
+}
 
-    let mut rows = Vec::new();
-    let mut rest = &text[head_end..];
-    while let Some(tr) = rest.find("<tr") {
-        let after = &rest[tr..];
-        let end = after.find("</tr>").ok_or("unterminated <tr>")?;
-        let tr_html = &after[..end];
-        rest = &after[end + 5..];
-        let cells = cells_of(tr_html);
-        if cells.len() < 5 || cells[0] == "Tarih" {
-            continue;
+/// Iterate `<tr>…</tr>` blocks with ≥ 5 proper `<td>…</td>` cells (the totals row uses `<td />`), unparsed.
+fn row_blocks(mut rest: &str) -> impl Iterator<Item = Result<&str, String>> {
+    std::iter::from_fn(move || {
+        loop {
+            let tr = rest.find("<tr")?;
+            let after = &rest[tr..];
+            let Some(end) = after.find("</tr>") else {
+                rest = "";
+                return Some(Err("unterminated <tr>".to_string()));
+            };
+            let block = &after[..end];
+            rest = &after[end + 5..];
+            if raw_cells(block).len() >= 5 {
+                return Some(Ok(block));
+            }
         }
-        let date = parse_date(&cells[0]).ok_or_else(|| format!("bad date {:?}", cells[0]))?;
-        let amount = parse_amount(&cells[3]).ok_or_else(|| format!("bad amount {:?}", cells[3]))?;
-        let balance = parse_amount(&cells[4]).ok_or_else(|| format!("bad balance {:?}", cells[4]))?;
-        rows.push(Row {
-            date_yyyymmdd: date,
-            fis_no: cells[1].clone(),
-            description: cells[2].clone(),
-            amount_kurus: amount,
-            balance_kurus: balance,
-        });
+    })
+}
+
+fn parse_row_block(tr_html: &str) -> Result<Row, String> {
+    let cells = cells_of(tr_html);
+    if cells.len() < 5 {
+        return Err("row with fewer than 5 cells".into());
     }
+    let date = parse_date(&cells[0]).ok_or_else(|| format!("bad date {:?}", cells[0]))?;
+    let amount = parse_amount(&cells[3]).ok_or_else(|| format!("bad amount {:?}", cells[3]))?;
+    let balance = parse_amount(&cells[4]).ok_or_else(|| format!("bad balance {:?}", cells[4]))?;
+    Ok(Row {
+        date_yyyymmdd: date,
+        fis_no: cells[1].clone(),
+        description: cells[2].clone(),
+        amount_kurus: amount,
+        balance_kurus: balance,
+    })
+}
+
+/// Full parse (host side).
+pub fn parse(html: &[u8]) -> Result<Statement, String> {
+    let (account_iban, currency, rest) = split_header(html)?;
+    let rows = row_blocks(rest)
+        .map(|b| b.and_then(parse_row_block))
+        .collect::<Result<Vec<_>, _>>()?;
     if rows.is_empty() {
         return Err("no statement rows".into());
     }
@@ -67,23 +90,33 @@ pub fn parse(html: &[u8]) -> Result<Statement, String> {
     })
 }
 
-fn cells_of(tr_html: &str) -> Vec<String> {
+/// Parse only the header and row `index` (guest side): rows are counted exactly as `parse`
+/// does, but only the requested one is decoded.
+pub fn parse_row(html: &[u8], index: usize) -> Result<(String, Row), String> {
+    let (account_iban, _currency, rest) = split_header(html)?;
+    let block = row_blocks(rest)
+        .nth(index)
+        .ok_or_else(|| format!("row {index} out of range"))??;
+    Ok((account_iban, parse_row_block(block)?))
+}
+
+/// Raw inner HTML of each `<td>…</td>` cell (cheap slicing, no allocation per cell).
+fn raw_cells(tr_html: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut rest = tr_html;
     while let Some(td) = rest.find("<td") {
         let after = &rest[td..];
-        let open_end = match after.find('>') {
-            Some(i) => i + 1,
-            None => break,
-        };
-        let close = match after.find("</td>") {
-            Some(i) => i,
-            None => break,
-        };
-        out.push(clean(&after[open_end..close]));
+        let (Some(open_end), Some(close)) = (after.find('>'), after.find("</td>")) else { break };
+        if open_end < close {
+            out.push(&after[open_end + 1..close]);
+        }
         rest = &after[close + 5..];
     }
     out
+}
+
+fn cells_of(tr_html: &str) -> Vec<String> {
+    raw_cells(tr_html).into_iter().map(clean).collect()
 }
 
 fn strip_tags(s: &str) -> String {
@@ -176,6 +209,24 @@ mod tests {
         assert_eq!(parse_amount("169,00"), Some(16900));
         assert_eq!(parse_date("05.09.2026"), Some(20260905));
         assert_eq!(parse_date("32.09.2026"), None);
+    }
+
+    #[test]
+    fn parse_row_matches_full_parse() {
+        let html = b"<table><tr><td>IBAN</td><td>:</td><td>TR330006100519786457841326</td></tr><tr><td>Doviz</td><td>:</td><td>TRY</td></tr></table>\
+<table><tr><th>Tarih</th><th>Fi\xc5\x9f No</th><th>A\xc3\xa7\xc4\xb1klama</th><th>Tutar</th><th>Bakiye</th></tr>\
+<tr><td>05.09.2026</td><td>F1</td><td>\xc3\x96rnek Banka/TR120000000000000000000001-AHMET/FAST i\xc5\x9flemi</td><td>-1.681,50</td><td>10.836,07</td></tr>\
+<tr><td>x</td><td>y</td></tr>\
+<tr><td>04.09.2026</td><td>F2</td><td>POS ALI\xc5\x9eVER\xc4\xb0\xc5\x9e</td><td>-10,00</td><td>10.826,07</td></tr></table>";
+        let full = parse(html).unwrap();
+        assert_eq!(full.rows.len(), 2);
+        for (i, row) in full.rows.iter().enumerate() {
+            let (iban, r) = parse_row(html, i).unwrap();
+            assert_eq!(&r, row);
+            assert_eq!(iban, full.account_iban);
+        }
+        assert!(parse_row(html, 2).is_err());
+        assert_eq!(full.rows[0].recipient_iban().as_deref(), Some("TR120000000000000000000001"));
     }
 
     #[test]

@@ -4,7 +4,7 @@
 //!   zkotc prove   --eml statement.eml --iban TR.. --offer-id 1 --out proof.json [--dns]
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use zkotc_host::{build_input, execute, image_id_hex, prove_groth16, resolve_dkim_der, ClaimJson, PINNED_DER};
+use zkotc_host::{build_input, execute, image_id_hex, prove_groth16, resolve_dkim_der, wrap_cached, ClaimJson, PINNED_DER};
 
 #[derive(Parser)]
 #[command(about = "RISC Zero zkEmail prover for Ziraat FAST payments")]
@@ -43,6 +43,16 @@ enum Cmd {
         common: Common,
         #[arg(long, default_value = "proof.json")]
         out: String,
+        /// save/reuse the succinct STARK receipt here so a failed Groth16 wrap can be retried with `wrap`
+        #[arg(long)]
+        succinct_cache: Option<std::path::PathBuf>,
+    },
+    /// Groth16-wrap a saved succinct receipt (from `prove --succinct-cache`)
+    Wrap {
+        #[arg(long)]
+        succinct: std::path::PathBuf,
+        #[arg(long, default_value = "proof.json")]
+        out: String,
     },
 }
 
@@ -60,11 +70,16 @@ fn main() -> Result<()> {
             println!("public_values: 0x{}", hex::encode(&ex.journal));
             println!("{}", serde_json::to_string_pretty(&ClaimJson::from(&ex.claim))?);
         }
-        Cmd::Prove { common, out } => {
+        Cmd::Prove { common, out, succinct_cache } => {
             let (input, _) = prepare(&common)?;
-            let bundle = prove_groth16(&input)?;
+            let bundle = prove_groth16(&input, succinct_cache.as_deref())?;
             std::fs::write(&out, serde_json::to_string_pretty(&bundle)?)?;
             println!("wrote {out} (seal {} bytes, {} cycles)", (bundle.proof.len() - 2) / 2, bundle.total_cycles);
+        }
+        Cmd::Wrap { succinct, out } => {
+            let bundle = wrap_cached(&succinct)?;
+            std::fs::write(&out, serde_json::to_string_pretty(&bundle)?)?;
+            println!("wrote {out} (seal {} bytes)", (bundle.proof.len() - 2) / 2);
         }
     }
     Ok(())

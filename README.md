@@ -22,7 +22,7 @@ buyer  ──fulfill(j,seal)▶└───────────────�
 |---|---|---|
 | `contracts/escrow` | Offer lifecycle, token custody, journal checks, nullifiers, fee, pause, upgrade; calls the RISC Zero router | 16 tests |
 | `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat statement parser, 152-byte journal | 6 tests incl. the real e-mail |
-| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x6c1bafe7…4238`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | 13.4M cycles on a real statement |
+| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x148bdb7a…5e2b`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | 6.7M cycles on a real statement |
 | `contracts/risc0-verifier-deployment.toml` | testnet deployment of [NethermindEth/stellar-risc0-verifier](https://github.com/NethermindEth/stellar-risc0-verifier) (router, timelock, Groth16 verifier v3.0.0, emergency stop) | routed, selector `73c457ba` |
 | `web` | Next.js 16 app: offers, sell, reserve → pay → upload .eml → claim, wallet via Stellar Wallets Kit | `next build` clean |
 | `docs` | PRD, UX copy, demo script, QA checklist | |
@@ -59,7 +59,7 @@ cd web && cp .env.example .env.local && npm i && npm run dev                # ht
 
 ## Generating real proofs (the only step that needs hardware or credits)
 RISC Zero's Groth16 (STARK→SNARK) wrapper is **x86-only** (not Apple Silicon, not even in Docker). Options:
-1. **x86 Linux box** (16+ vCPU, ≥16 GB, optionally an NVIDIA GPU with `--features cuda`): `rzup install risc0-groth16`, then run `zkotc-server`. One statement ≈ 13.4M cycles: ~20 min on the 4-vCPU VM, about a minute on a GPU, plus the Groth16 wrap.
+1. **x86 Linux box** (16+ vCPU, ≥16 GB, optionally an NVIDIA GPU with `--features cuda`): `rzup install risc0-groth16`, then run `zkotc-server`. One statement ≈ 6.7M cycles: roughly 10–15 min on the 4-vCPU VM, well under a minute on a GPU, plus the Groth16 wrap.
 2. **Boundless** (RISC Zero's proof market, Base mainnet, paid in ETH): request a Groth16 receipt with the `boundless-market` SDK and feed `seal`/`journal` to `fulfill`.
 On a Mac you can `execute` (exact journal, any machine) and, with `RISC0_DEV_MODE=1`, produce fake receipts for UI development — the router rejects them on-chain by design. Receipts must come from risc0 **3.0.x** (control root `a54dc85a…`), which is what the deployed verifier pins; a new RISC Zero major needs a new verifier version behind the router.
 

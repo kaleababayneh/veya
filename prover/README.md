@@ -25,6 +25,7 @@ go install github.com/google/pprof@latest
 RISC0_PPROF_OUT=/tmp/zkotc.pprof ./target/release/zkotc execute --eml my.eml --iban TR... --offer-id 1
 pprof -top -nodecount=30 /tmp/zkotc.pprof
 ```
-Reading the e-mail via `env::read::<Vec<u8>>()` cost ~20M of 34M cycles (serde deserializes byte by byte); the
-`u32 length + read_slice` protocol brought a real statement down to ~13.4M cycles. Remaining cost is mostly
-MIME/statement string handling and base64 (~7M) and DKIM (~3M, RSA/SHA-256 accelerated).
+Cycle history on a real statement: 33.7M → 13.4M (read blobs with `read_slice` instead of serde `Vec<u8>`)
+→ 6.7M (parse only the requested statement row, per-line base64 decode, hash the DKIM body in place).
+Remaining: MIME part scanning + base64 ≈ 5M, DKIM ≈ 1.5M (RSA/SHA-256 accelerated). Next candidates: a faster
+substring search in `mime::split_parts` (`memchr::memmem`) and decoding only the statement part.
