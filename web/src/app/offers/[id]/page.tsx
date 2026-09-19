@@ -6,7 +6,7 @@ import { useWallet } from "@/lib/wallet";
 import { escrow, getOffer, getConfig, send, unwrapResult, explainError, ERROR_HELP, type EscrowConfig } from "@/lib/escrow";
 import { createJob, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJob, type ProverInfo } from "@/lib/prover";
 import { tokenByAddress } from "@/lib/tokens";
-import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, istanbulYmd, nowSec, short, hexToBuffer } from "@/lib/format";
+import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, istanbulYmd, nowSec, short, hexToBuffer, bytesToHex } from "@/lib/format";
 import { config, accountUrl, contractUrl } from "@/lib/config";
 import { Alert, BackLink, Button, Card, Spinner, StatusBadge, Steps, TxLink } from "@/components/ui";
 import { Countdown } from "@/components/Countdown";
@@ -38,6 +38,7 @@ export default function OfferPage() {
     proverInfo().then(setInfo).catch(() => setInfo(null));
     const t = setInterval(() => {
       refresh();
+      proverInfo().then(setInfo).catch(() => {});
       setNow(nowSec());
     }, 10_000);
     return () => clearInterval(t);
@@ -473,8 +474,11 @@ function BuyerFlow({
           <p className="text-sm text-muted">
             The proof ({(job.proof.length - 2) / 2} bytes) will be verified by the Soroban verifier contract inside the same transaction that pays you.
           </p>
-          {cfg && info && cfg.image_id.toString("hex") !== info.image_id.replace(/^0x/, "") && (
-            <Alert kind="error">The prover&apos;s guest image id does not match the escrow configuration; the claim would fail on-chain.</Alert>
+          {cfg && info && bytesToHex(cfg.image_id).toLowerCase() !== info.image_id.replace(/^0x/, "").toLowerCase() && (
+            <Alert kind="error">
+              The prover&apos;s guest image id ({info.image_id.slice(0, 10)}…) does not match the escrow configuration ({bytesToHex(cfg.image_id).slice(0, 8)}…); a claim
+              with this proof would fail on-chain. If the prover was updated, reload this page.
+            </Alert>
           )}
           <Button onClick={() => onClaim(job.public_values!, job.proof!)} disabled={!!busy}>
             {busy ? <><Spinner /> Confirm in wallet…</> : `Claim ${prize}`}

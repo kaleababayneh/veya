@@ -76,7 +76,7 @@ CORS_ORIGIN=$CORS_ORIGIN
 DKIM_DNS=${DKIM_DNS:-1}
 MAX_JOBS_QUEUED=${MAX_JOBS_QUEUED:-8}
 EOF
-FLAGS=""; [ "$BUILD" = 1 ] && FLAGS="--build"
+FLAGS="--reinstall"; [ "$BUILD" = 1 ] && FLAGS="--build"
 box "rm -f ~/zkotc/bootstrap.status; nohup bash ~/zkotc/bootstrap.sh $FLAGS > /dev/null 2>&1 &"
 last=""
 st=""

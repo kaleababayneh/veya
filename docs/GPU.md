@@ -78,8 +78,9 @@ whichever prover the app uses must be the one the escrow points at.
   boxes: `cloudflared tunnel --url http://localhost:10100` gives a temporary HTTPS URL).
 - CLI on the box: `GROTH16_ICICLE_DIR=~/gpu-artifacts/icicle GROTH16_ZKEY_DIR=~/gpu-artifacts/zkey ~/zkotc/bin/zkotc prove --eml x.eml --iban TR… --name "AD SOYAD" --offer-id N --dns --out proof.json`
   (the CLI starts its own ICICLE worker, so add ~2 s; the server keeps one warm)
-- Logs: `~/zkotc/server.log` (no e-mail bodies), `~/zkotc/bootstrap.log`. Restart the server:
-  `bash ~/zkotc/bootstrap.sh` (keeps the artifacts, re-verifies checksums, restarts).
+- Logs: `~/zkotc/server.log` (no e-mail bodies), `~/zkotc/bootstrap.log`. Restart the server (also after the
+  container rebooted, which kills the `nohup` server): `bash ~/zkotc/bootstrap.sh` keeps the installed binaries;
+  `--reinstall` replaces them from the synced artifacts; `--build` rebuilds from `~/zkotc` sources.
 
 ## 4. When the prover code changes
 

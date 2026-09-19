@@ -5,6 +5,9 @@
 #   bash ~/zkotc/bootstrap.sh            # prebuilt binaries from ~/gpu-artifacts/bin/latest, then serve
 #   bash ~/zkotc/bootstrap.sh --build    # build ~/zkotc/{zkotc-lib,prover} from source (nvcc, ~30 min), then serve
 #   bash ~/zkotc/bootstrap.sh --no-serve # skip starting the server
+#   bash ~/zkotc/bootstrap.sh --reinstall # replace installed binaries with ~/gpu-artifacts/bin/latest (deploy.sh does this)
+# Without --build/--reinstall an already installed ~/zkotc/bin is kept (a box that built newer code than the
+# synced artifacts must not be downgraded by a restart after a reboot).
 #
 # Inputs (put in place by deploy.sh):
 #   ~/gpu-artifacts/icicle/      ICICLE-snark GPU Groth16 worker + libs (ENGINE=icicle, default)
@@ -22,11 +25,12 @@ set -euo pipefail
 A=$HOME/gpu-artifacts
 Z=$HOME/zkotc
 LOG=$Z/bootstrap.log
-BUILD=0; SERVE=1
+BUILD=0; SERVE=1; REINSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --build) BUILD=1 ;;
     --no-serve) SERVE=0 ;;
+    --reinstall) REINSTALL=1 ;;
     *) echo "unknown flag $arg" >&2; exit 2 ;;
   esac
 done
@@ -81,6 +85,8 @@ if [ "$BUILD" = 1 ]; then
   ( cd "$Z/prover" && cargo build --release --features cuda 2>&1 | grep -E "Compiling risc0|Compiling zkotc|Finished|^error|warning: unused" )
   install_bin "$Z/prover/target/release"
   echo "built $(git -C "$Z" rev-parse --short HEAD 2>/dev/null || echo '?')"
+elif [ -x "$Z/bin/zkotc-server" ] && [ "$REINSTALL" = 0 ]; then
+  step "keeping installed binaries in $Z/bin (pass --reinstall to replace them from the artifacts)"
 else
   step "prebuilt binaries"
   [ -f "$A/bin/latest/SHA256SUMS" ] || { echo "missing $A/bin/latest (run deploy.sh --build --publish once)"; exit 1; }

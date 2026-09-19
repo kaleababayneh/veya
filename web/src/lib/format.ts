@@ -59,3 +59,10 @@ export const secondsToClock = (s: number) => {
 };
 
 export const hexToBuffer = (hex: string) => Buffer.from(hex.replace(/^0x/, ""), "hex");
+
+/** Hex of contract bytes from the bindings — a Buffer in Node, but possibly a plain Uint8Array in the browser,
+ *  whose `toString("hex")` would silently return comma-separated decimals. */
+export function bytesToHex(b: Uint8Array | { toString(enc: string): string }): string {
+  if (b instanceof Uint8Array) return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return String(b.toString("hex"));
+}

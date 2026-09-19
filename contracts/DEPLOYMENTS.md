@@ -18,4 +18,9 @@ SP1-era deployments (superseded 2026-09-08): see git tag `sp1-backend`.
 | timelock | owns the router, delay 0 (testnet) | CDJ47SNGJXWT435KYW4QO4QX262RUANOKLRGHC2PLW2YI7EQHFCQAMBR |
 Full state: `risc0-verifier-deployment.toml` (copied from the vendored repo's `deployment.toml`).
 
+2026-09-10 escrow v4 dry run with the real receipt (offer #1: 5 XLM for ₺50, payee = the real recipient, locked + `declare_paid`
+by `zkotc-buyer` GDZSGQN6…): `fulfill` failed with `Error(Contract, #16)` DateOutOfWindow — i.e. the Groth16 receipt verified
+through the router inside the escrow call, the payee binding matched the offer, the amount check passed, and only the
+anti-replay rule (dekont dated 05.09 < lock day) blocked settlement. A same-day transfer completes the flow.
+
 First real receipt verified on-chain via the router: https://stellar.expert/explorer/testnet/tx/27a5f44d076e05f978237f55110e7212e38decf180f14d5472e14cfd8d8b36d3 (2026-09-08, image id 9ec8ddc3…, fee 222957 stroops).
