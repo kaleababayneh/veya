@@ -14,5 +14,6 @@ doctest = false
 soroban-sdk = { workspace = true }
 
 [dev-dependencies]
+zkotc-lib = { path = "../../zkotc-lib" }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 sha2 = "0.10"

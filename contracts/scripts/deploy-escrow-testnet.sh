@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Deploy the OTC escrow to Stellar testnet.
-#   ./scripts/deploy-escrow-testnet.sh <image_id_hex> [identity] [alias]
+#   REVEAL_PUBKEY=<hex32> ./scripts/deploy-escrow-testnet.sh <image_id_hex> [identity] [alias]
+# REVEAL_PUBKEY: X25519 public key of the payee-reveal service (web/.env.local REVEAL_SECRET_KEY is its secret).
 # Verifier = RISC Zero verifier router from risc0-verifier-deployment.toml (NethermindEth/stellar-risc0-verifier).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMAGE_ID="${1:?guest image id hex (from: zkotc image-id)}"; IMAGE_ID="${IMAGE_ID#0x}"
+REVEAL_PUBKEY="${REVEAL_PUBKEY:?X25519 public key hex of the payee-reveal service}"; REVEAL_PUBKEY="${REVEAL_PUBKEY#0x}"
 IDENTITY="${2:-stellarpro}"
 ALIAS="${3:-otc-escrow}"
 STELLAR="${STELLAR_BIN:-stellar}"
@@ -19,7 +21,8 @@ echo ">> admin=$ADMIN verifier=$VERIFIER_ID"
 echo ">> image_id=$IMAGE_ID"
 echo ">> domain_hash=$DOMAIN_HASH dkim_key_hash=$DKIM_KEY_HASH"
 echo ">> tokens: XLM=$XLM_SAC USDC=$USDC_SAC"
-echo ">> lock 3600 s, proof window 7200 s, seller bond 5 %, late-claim window 3 days, fee 25 bps, ₺50–₺5000"
+echo ">> lock 3600 s, proof window 7200 s, maker bond 5 %, late-claim window 3 days, fee 25 bps, ₺50–₺5000, ≤5 reservations/ad, ≤2 active/buyer"
+echo ">> reveal_pubkey=$REVEAL_PUBKEY"
 ( cd escrow && $STELLAR contract build >/dev/null )
 WASM=target/wasm32v1-none/release/zkotc_escrow.wasm
 CONTRACT_ID=$($STELLAR contract deploy \
@@ -38,7 +41,10 @@ CONTRACT_ID=$($STELLAR contract deploy \
   --max_try_kurus 500000 \
   --proof_window 7200 \
   --bond_bps 500 \
-  --late_claim_window 259200)
+  --late_claim_window 259200 \
+  --max_reservations_per_ad 5 \
+  --max_active_per_buyer 2 \
+  --reveal_pubkey "$REVEAL_PUBKEY")
 echo ">> deployed: $CONTRACT_ID"
 echo "$CONTRACT_ID" > ".$ALIAS.testnet.id"
 echo ">> https://stellar.expert/explorer/testnet/contract/$CONTRACT_ID"

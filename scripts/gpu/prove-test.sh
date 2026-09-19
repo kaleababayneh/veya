@@ -6,10 +6,12 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 set -a; . scripts/gpu/.env; set +a
 URL=${1:?prover url}; EML=${2:?eml path}; IBAN=${3:-${TEST_IBAN:?TEST_IBAN}}; NAME=${4:-${TEST_NAME:?TEST_NAME}}
-python3 - "$URL" "$EML" "$IBAN" "$NAME" "$PROVER_TOKEN" <<'EOF'
+BUYER=${TEST_BUYER:-$(stellar keys address zkotc-buyer 2>/dev/null || echo GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF)}
+OFFER=${TEST_OFFER_ID:-1}
+python3 - "$URL" "$EML" "$IBAN" "$NAME" "$PROVER_TOKEN" "$BUYER" "$OFFER" <<'EOF'
 import base64, json, sys, time, urllib.request
-url, eml, iban, name, tok = sys.argv[1:6]
-body = json.dumps({"eml_base64": base64.b64encode(open(eml, "rb").read()).decode(), "offer_id": 1,
+url, eml, iban, name, tok, buyer, offer = sys.argv[1:8]
+body = json.dumps({"eml_base64": base64.b64encode(open(eml, "rb").read()).decode(), "offer_id": int(offer), "buyer": buyer,
                    "recipient_iban": iban, "recipient_name": name, "min_amount_kurus": 1, "since_yyyymmdd": 20000101}).encode()
 t0 = time.time()
 req = urllib.request.Request(url + "/jobs", data=body, headers={"content-type": "application/json", "x-prover-token": tok})

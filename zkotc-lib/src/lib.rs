@@ -5,7 +5,9 @@
 //! 2. Require the `From:` domain to equal the DKIM `d=` domain.
 //! 3. Extract the `e-dekont.html` attachment from the signed MIME body.
 //! 4. Parse the per-transaction dekont; require an outgoing transfer that prints recipient account/bank/name.
-//! 5. Emit 152-byte public values (see `PaymentClaim`).
+//! 5. Require the payment reference (`ZKOTC <offer> <code-of-buyer-wallet>`) in the transfer description, so
+//!    the e-mail is bound to the claiming wallet and a stolen `.eml` settles nothing for anyone else.
+//! 6. Emit 184-byte public values (see `PaymentClaim`).
 
 pub mod dekont;
 pub mod dkim;
@@ -16,7 +18,7 @@ pub mod text;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PUBLIC_VALUES_LEN: usize = 152;
+pub const PUBLIC_VALUES_LEN: usize = 184;
 const NULLIFIER_DOMAIN: &[u8] = b"stellarpro/zkotc/nullifier/v3-dekont";
 pub const DEKONT_ATTACHMENT_PREFIX: &str = "e-dekont";
 
@@ -29,6 +31,8 @@ pub struct ProverInput {
     /// where the e-dekont attachment sits in the body: computed by the host (`locate_dekont`), verified
     /// by the guest, so the guest never scans the body. `None` = scan (slow path, host tools).
     pub attachment: Option<mime::AttachmentHint>,
+    /// the payment reference the buyer had to type into the FAST description (`payment_reference`)
+    pub reference: String,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaymentClaim {
@@ -40,6 +44,8 @@ pub struct PaymentClaim {
     pub date_yyyymmdd: u64,
     pub nullifier: [u8; 32],
     pub offer_id: u64,
+    /// sha256 of the folded payment reference found in the transfer description (`reference_hash`)
+    pub reference_hash: [u8; 32],
 }
 
 impl PaymentClaim {
@@ -52,6 +58,7 @@ impl PaymentClaim {
         out[104..112].copy_from_slice(&self.date_yyyymmdd.to_be_bytes());
         out[112..144].copy_from_slice(&self.nullifier);
         out[144..152].copy_from_slice(&self.offer_id.to_be_bytes());
+        out[152..184].copy_from_slice(&self.reference_hash);
         out
     }
 
@@ -69,6 +76,7 @@ impl PaymentClaim {
             date_yyyymmdd: a8(104),
             nullifier: a32(112),
             offer_id: a8(144),
+            reference_hash: a32(152),
         })
     }
 }
@@ -82,6 +90,8 @@ pub enum Error {
     NotOutgoing,
     /// the dekont does not print recipient account/bank/name
     NoPayee,
+    /// the transfer description does not contain the expected payment reference
+    ReferenceMissing { expected: String },
 }
 
 impl core::fmt::Display for Error {
@@ -98,6 +108,23 @@ impl From<dkim::DkimError> for Error {
 
 pub fn sha256(b: &[u8]) -> [u8; 32] {
     Sha256::digest(b).into()
+}
+
+/// The reference a buyer must type into the FAST description: `ZKOTC <offer id> <6 hex of sha256(wallet)>`.
+/// Mirrored in the escrow (`payment_reference` view); the proof commits `reference_hash` of it.
+pub fn payment_reference(offer_id: u64, buyer_address: &str) -> String {
+    let h = sha256(buyer_address.trim().as_bytes());
+    format!("ZKOTC {offer_id} {}", hex_upper(&h[..3]))
+}
+
+/// What the guest commits for a reference: sha256 of its folded form (uppercase, Turkish letters folded,
+/// single spaces), so what the bank prints and what the wallet derived compare equal.
+pub fn reference_hash(reference: &str) -> [u8; 32] {
+    sha256(payee::fold_name(reference).as_bytes())
+}
+
+fn hex_upper(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02X}")).collect()
 }
 
 /// Normalize an IBAN (uppercase, no spaces) and hash it — must match the escrow contract.
@@ -135,6 +162,9 @@ pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
         return Err(Error::NotOutgoing);
     }
     let payee_hash = d.payee_hash().ok_or(Error::NoPayee)?;
+    if !d.contains_reference(&input.reference) {
+        return Err(Error::ReferenceMissing { expected: input.reference.clone() });
+    }
 
     let domain_hash = sha256(verified.domain.to_ascii_lowercase().as_bytes());
     Ok(PaymentClaim {
@@ -145,6 +175,7 @@ pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
         date_yyyymmdd: d.date_yyyymmdd,
         nullifier: nullifier(&domain_hash, &d),
         offer_id: input.offer_id,
+        reference_hash: reference_hash(&input.reference),
     })
 }
 

@@ -12,7 +12,7 @@ seller ──create_offer──▶ ┌──────────────
                          │  otc-escrow    │──sha256(journal))───────▶│ RISC Zero verifier router    │ (BN254 g1_mul + pairing_check)
 buyer  ──lock──────────▶ │  (Soroban)     │◀──ok/err─────────────────│ → Groth16Verifier (Nethermind)│
 buyer  ──fulfill(j,seal)▶└────────────────┘                          └──────────────────────────────┘
-                              ▲  seal = 4-byte selector ‖ Groth16 (260 B), j = 152-byte journal
+                              ▲  seal = 4-byte selector ‖ Groth16 (260 B), j = 184-byte journal
                               │
         .eml ──▶ zkotc-server (RISC Zero zkVM: DKIM RSA-SHA256 → MIME → Ziraat e-dekont) ──▶ seal, journal
 ```
@@ -21,13 +21,20 @@ buyer  ──fulfill(j,seal)▶└───────────────�
 | Path | What | Status |
 |---|---|---|
 | `contracts/escrow` | Offer lifecycle, token custody, journal checks, nullifiers, fee, pause, upgrade; calls the RISC Zero router | 16 tests |
-| `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat e-dekont parser, 152-byte journal | 8 tests incl. a real e-dekont e-mail |
+| `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat e-dekont parser, 184-byte journal | 8 tests incl. a real e-dekont e-mail |
 | `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x9ec8ddc3…7cbf`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | 5.19M cycles on a real outgoing e-dekont |
 | `contracts/risc0-verifier-deployment.toml` | testnet deployment of [NethermindEth/stellar-risc0-verifier](https://github.com/NethermindEth/stellar-risc0-verifier) (router, timelock, Groth16 verifier v3.0.0, emergency stop) | routed, selector `73c457ba` |
 | `web` | Next.js 16 app: offers, sell, reserve → pay → upload .eml → claim, wallet via Stellar Wallets Kit | `next build` clean |
 | `docs` | PRD, UX copy, demo script, QA checklist | |
 
-## Proven end to end (2026-09-08)
+## Proven end to end (2026-09-08 → full settlement 2026-09-10)
+**First complete settlement on testnet, 2026-09-10 01:00 Istanbul:** offer #3 on escrow v4 (10 XLM for ₺50), reserved and
+`declare_paid` by the buyer's Freighter wallet, a real ₺50 FAST transfer sent at 00:58, the e-dekont e-mail proved in ~15 s on
+the GPU prover, and `fulfill` paid 9.975 XLM to the buyer and returned the seller's bond in one transaction:
+[tx afdbb4c2…](https://stellar.expert/explorer/testnet/tx/afdbb4c22149d0143c35134b1c12a281ca619c4051191442d03a52cfcbc37fae).
+A dry run earlier the same night with a 5-day-old receipt stopped exactly at `DateOutOfWindow`, i.e. after proof, payee and
+amount verification, as the anti-replay rule requires.
+
 A real Ziraat outgoing-FAST e-dekont → DKIM verified inside the RISC Zero guest (5.19M cycles) → Groth16 receipt
 (84 min on the 4-vCPU Azure VM; **30 s on an RTX 4090**, see below) → **verified on Stellar testnet by the RISC Zero router**:
 [tx 27a5f44d…](https://stellar.expert/explorer/testnet/tx/27a5f44d076e05f978237f55110e7212e38decf180f14d5472e14cfd8d8b36d3) (fee 0.022 XLM). Tampered journal or wrong image id are rejected.
@@ -45,7 +52,8 @@ reference CPU prover remains as a fallback engine (`GROTH16_NATIVE_DIR`, 19 s).
 ## Testnet deployments (Protocol 28)
 | Contract | Id |
 |---|---|
-| otc-escrow v4 (RISC Zero, declare_paid + seller bond) | `CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV` |
+| otc-escrow v5 (P2P market: ads + reservations, encrypted payee, bonds) | `CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG` |
+| otc-escrow v4 (single offers; superseded 2026-09-10) | `CBYZNQAOVAT5QDM6FQHKSWDOQDLA7AJ53PFZ6DLNC47A3YAR4KN6VCHV` |
 | RISC Zero verifier router | `CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG` |
 | RISC Zero Groth16 verifier (params v3.0.0, selector 73c457ba) | `CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI` |
 | Emergency stop / timelock | `CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4` / `CDJ47SNGJXWT435KYW4QO4QX262RUANOKLRGHC2PLW2YI7EQHFCQAMBR` |
@@ -53,12 +61,26 @@ Tokens: XLM SAC `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`, USDC
 Escrow config: lock 3600 s · proof window 7200 s after `declare_paid` · seller bond 5 % · late-claim window 3 days · fee 25 bps · ₺50–₺5 000 ·
 trusted DKIM key `msg2._domainkey.ileti.ziraatbank.com.tr` (sha256 `dfc62dad…c806`) · image id of the GPU prover build (`eaf273e6…`).
 
-**Trust model.** The buyer pays off-chain after locking, so a timer alone would let the seller withdraw the moment it ends.
+**Market model (v5, 2026-09-10).** Like Binance P2P / zkP2P: makers post *ads* (a deposit of XLM/USDC, a price in ₺ per token,
+min/max per trade, a nickname) and takers *reserve* any amount within the limits; the reservation fixes the TRY amount at the ad's
+price, holds that slice for `lock_duration`, and is settled by the proof. Several buyers can trade against one ad at once
+(`max_reservations_per_ad`, `max_active_per_buyer`). **Payee privacy:** the maker's IBAN + name are sealed in the browser to the
+reveal service's X25519 key (`Config::reveal_pubkey`) and stored on-chain only as ciphertext plus `payee_hash`; the app's server route
+`/api/reveal` opens them for the wallet that holds a reservation (or the maker) after a wallet-signed message, and the client refuses
+to show them unless they hash to the on-chain commitment. Nothing on the ledger names a bank account.
+
+**Trust model.** The buyer pays off-chain after reserving, so a timer alone would let the maker withdraw the moment it ends.
 The escrow therefore has: `declare_paid` (the locked buyer records the payment; the lock is extended to at least
 `proof_window`, during which only the buyer can release it); a seller bond (`bond_bps` of the amount, deposited with the
 offer); and `claim_bond` (if the offer is released after a declared payment, the buyer who declared can still prove it
 within `late_claim_window` and take the bond; otherwise the seller gets it back via `withdraw_bond` or automatically).
 A takeover of a stale lock counts as a release, so a seller cannot dodge the bond by letting a second buyer settle.
+**Wallet binding (2026-09-10):** the buyer types a payment reference `ZKOTC <offer> <6 hex of sha256(wallet)>` into the
+FAST description; the guest requires it in the signed dekont and commits its hash, and the escrow recomputes it from the
+offer id and the claiming wallet. A stolen `.eml` therefore settles nothing for anyone but the wallet it was paid for.
+The parser also anchors the transfer direction on three bank-generated rows (title, `Fast Mesaj Kodu` prefix, last
+settlement sentence) and treats everything after `Açıklama :` as untrusted text, and the guest refuses DKIM signatures
+with an `l=` body-length limit.
 Residual risks: a buyer can delay a seller by the proof window without paying (no buyer bond yet), and a proof that
 arrives after the late-claim window is not compensated.
 
@@ -95,10 +117,11 @@ A real prover runs on an x86 Azure VM behind Caddy/TLS at `https://4-239-243-216
 `GET /info` → `{image_id, prover_mode, dkim_source}` · `POST /jobs {eml_base64, offer_id, recipient_iban, min_amount_kurus, since_yyyymmdd}` → job (fails fast with the exact DKIM/statement error) · `GET /jobs/{id}` → `queued | executing | proving | done | failed` with `proof`, `public_values`.
 The e-mail is kept in memory only for the job; bodies are never logged. DKIM key from DNS (`DKIM_DNS=1`) or the pinned DER.
 
-## Journal / public values (152 bytes)
-`dkim_key_hash ‖ domain_hash ‖ payee_hash ‖ amount_kurus(u64) ‖ date_yyyymmdd(u64) ‖ nullifier ‖ offer_id(u64)`.
+## Journal / public values (184 bytes)
+`dkim_key_hash ‖ domain_hash ‖ payee_hash ‖ amount_kurus(u64) ‖ date_yyyymmdd(u64) ‖ nullifier ‖ reservation_id(u64) ‖ reference_hash`.
+`reference_hash = sha256("ZKOTC <reservation id> <6 hex of sha256(claiming wallet)>")` — the buyer types that reference into the FAST description, so a stolen e-mail settles nothing for another wallet.
 `payee_hash = sha256("zkotc/payee/v1" ‖ TRcc ‖ bank code(5) ‖ last 6 IBAN digits ‖ Turkish-folded recipient name)` — Ziraat's dekont masks IBANs, so the binding uses the visible check digits, bank code, IBAN tail and the recipient name; the escrow derives the same hash from the seller's full IBAN + name.
-Escrow checks: router.verify(seal, image_id, sha256(journal)) · offer_id · DKIM key trusted · domain · payee_hash == offer · amount (İşlem Tutarı) ≥ price · Istanbul day(lock) ≤ date ≤ Istanbul day(now) · nullifier unused.
+Escrow checks: router.verify(seal, image_id, sha256(journal)) · reservation_id · DKIM key trusted · domain · payee_hash == ad · amount (İşlem Tutarı) ≥ reservation's TRY · reference_hash == sha256(payment_reference(reservation, wallet)) · Istanbul day(reservation) ≤ date ≤ Istanbul day(now) · nullifier unused.
 
 ## History
 The first iteration used SP1 with our own Soroban Groth16 verifier (verified a real SP1 proof on-chain). It was replaced by RISC Zero for ecosystem alignment; that code lives at git tag `sp1-backend`.

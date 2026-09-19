@@ -1,8 +1,7 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { OfferStatus } from "@/contracts/escrow";
-import { statusLabel } from "@/lib/escrow";
+import { AdStatus, ReservationStatus } from "@/contracts/escrow";
 import { txUrl } from "@/lib/config";
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -44,19 +43,26 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 export const inputCls =
   "w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-sm outline-none ring-accent/40 focus:ring-2 placeholder:text-muted/70";
 
-export function StatusBadge({ status, expired }: { status: OfferStatus; expired?: boolean }) {
-  const map: Record<number, string> = {
-    [OfferStatus.Open]: "bg-ok/15 text-ok",
-    [OfferStatus.Locked]: "bg-warn/15 text-warn",
-    [OfferStatus.Fulfilled]: "bg-accent/15 text-accent",
-    [OfferStatus.Cancelled]: "bg-muted/15 text-muted",
-  };
-  return (
-    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${map[status]}`}>
-      {statusLabel[status]}
-      {status === OfferStatus.Locked && expired ? " · timer ended" : ""}
-    </span>
-  );
+export function Badge({ tone, children }: { tone: "ok" | "warn" | "accent" | "muted" | "danger"; children: React.ReactNode }) {
+  const map = {
+    ok: "bg-ok/15 text-ok",
+    warn: "bg-warn/15 text-warn",
+    accent: "bg-accent/15 text-accent",
+    muted: "bg-muted/15 text-muted",
+    danger: "bg-danger/15 text-danger",
+  }[tone];
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${map}`}>{children}</span>;
+}
+
+export function ReservationBadge({ status, expired, claimOpen }: { status: ReservationStatus; expired?: boolean; claimOpen?: boolean }) {
+  if (status === ReservationStatus.Active) return <Badge tone={expired ? "danger" : "warn"}>{expired ? "Reserved · timer ended" : "Reserved"}</Badge>;
+  if (status === ReservationStatus.Settled) return <Badge tone="accent">Completed</Badge>;
+  return <Badge tone={claimOpen ? "danger" : "muted"}>{claimOpen ? "Released · bond claim open" : "Released"}</Badge>;
+}
+
+export function AdBadge({ status, soldOut }: { status: AdStatus; soldOut?: boolean }) {
+  if (status === AdStatus.Closed) return <Badge tone="muted">Closed</Badge>;
+  return <Badge tone={soldOut ? "warn" : "ok"}>{soldOut ? "Fully reserved" : "Active"}</Badge>;
 }
 
 export function Alert({ kind = "info", children }: { kind?: "info" | "warn" | "error" | "ok"; children: React.ReactNode }) {
@@ -106,7 +112,7 @@ export function Steps({ current, steps }: { current: number; steps: string[] }) 
   );
 }
 
-export function BackLink({ href = "/", children = "← All offers" }: { href?: string; children?: React.ReactNode }) {
+export function BackLink({ href = "/", children = "← Market" }: { href?: string; children?: React.ReactNode }) {
   return (
     <Link href={href} className="text-sm text-muted hover:text-fg">
       {children}

@@ -1,3 +1,4 @@
+import { hash } from "@stellar/stellar-sdk";
 export const short = (s: string, n = 4) => (s.length > 2 * n + 1 ? `${s.slice(0, n)}…${s.slice(-n)}` : s);
 
 /** i128 smallest units -> human string with up to `decimals` fractional digits, trailing zeros trimmed */
@@ -65,4 +66,12 @@ export const hexToBuffer = (hex: string) => Buffer.from(hex.replace(/^0x/, ""), 
 export function bytesToHex(b: Uint8Array | { toString(enc: string): string }): string {
   if (b instanceof Uint8Array) return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   return String(b.toString("hex"));
+}
+
+/** `ZKOTC <offer id> <6 hex of sha256(wallet)>` — what the buyer types into the FAST description; the
+ *  proof commits its hash and the escrow recomputes it from (offer, claiming wallet). Mirrors
+ *  zkotc_lib::payment_reference and the escrow's payment_reference view. */
+export function paymentReference(offerId: bigint | number, buyer: string): string {
+  const h = hash(Buffer.from(buyer.trim(), "utf8"));
+  return `ZKOTC ${offerId.toString()} ${Buffer.from(h.subarray(0, 3)).toString("hex").toUpperCase()}`;
 }

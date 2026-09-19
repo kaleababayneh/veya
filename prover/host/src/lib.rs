@@ -46,6 +46,7 @@ pub struct ClaimJson {
     pub date_yyyymmdd: u64,
     pub nullifier: String,
     pub offer_id: u64,
+    pub reference_hash: String,
 }
 
 impl From<&PaymentClaim> for ClaimJson {
@@ -58,6 +59,7 @@ impl From<&PaymentClaim> for ClaimJson {
             date_yyyymmdd: c.date_yyyymmdd,
             nullifier: hex::encode(c.nullifier),
             offer_id: c.offer_id,
+            reference_hash: hex::encode(c.reference_hash),
         }
     }
 }
@@ -83,6 +85,7 @@ pub fn executor_env(input: &ProverInput) -> Result<ExecutorEnv<'static>> {
         .write_slice(&input.dkim_pubkey_der)
         .write(&input.offer_id)?
         .write(&input.attachment)?
+        .write(&input.reference)?
         .build()?)
 }
 
@@ -471,7 +474,12 @@ pub fn build_input(
     min_amount_kurus: u64,
     since_yyyymmdd: u64,
     offer_id: u64,
+    buyer_address: &str,
 ) -> Result<(ProverInput, zkotc_lib::dekont::Dekont)> {
+    if !(buyer_address.len() == 56 && buyer_address.starts_with('G')) {
+        return Err(anyhow!("buyer must be a Stellar account address (G…)"));
+    }
+    let reference = zkotc_lib::payment_reference(offer_id, buyer_address);
     // CRLF-normalize once here; the guest hashes the bytes as given and the hint offsets refer to them
     let eml = match zkotc_lib::dkim::normalized(&eml) {
         std::borrow::Cow::Borrowed(_) => eml,
@@ -501,7 +509,13 @@ pub fn build_input(
     if d.date_yyyymmdd < since_yyyymmdd {
         return Err(anyhow!("transfer dated {} is before the reservation day {since_yyyymmdd}", d.date_yyyymmdd));
     }
-    Ok((ProverInput { eml, dkim_pubkey_der: der, offer_id, attachment: Some(attachment) }, d))
+    if !d.contains_reference(&reference) {
+        return Err(anyhow!(
+            "the transfer description does not contain your payment reference \"{reference}\"{}; type it into the FAST açıklama field and send again",
+            d.aciklama().map(|a| format!(" (it says \"{a}\")")).unwrap_or_default()
+        ));
+    }
+    Ok((ProverInput { eml, dkim_pubkey_der: der, offer_id, attachment: Some(attachment), reference }, d))
 }
 
 pub const PINNED_DER: &[u8] = include_bytes!("../../../zkotc-lib/testdata/ziraat-ileti-msg2.der");

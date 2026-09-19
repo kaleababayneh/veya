@@ -1,7 +1,8 @@
 //! zkotc CLI (RISC Zero) — evidence: Ziraat e-dekont e-mail (.eml)
 //!   zkotc image-id
-//!   zkotc execute --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 [--min-kurus N] [--since YYYYMMDD] [--dns]
-//!   zkotc prove   --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --out proof.json [--dns]
+//!   zkotc execute --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --buyer G… [--min-kurus N] [--since YYYYMMDD] [--dns]
+//!   zkotc prove   --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --buyer G… --out proof.json [--dns]
+//!   zkotc reference --offer-id 1 --buyer G…      # the text the buyer must put in the FAST description
 //! Env GROTH16_NATIVE_DIR=<dir>: Groth16 wrap with the reference CPU prover run natively (see host/src/lib.rs).
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -26,6 +27,9 @@ struct Common {
     name: String,
     #[arg(long)]
     offer_id: u64,
+    /// claiming wallet (G…); the transfer description must carry `payment_reference(offer_id, buyer)`
+    #[arg(long)]
+    buyer: String,
     #[arg(long, default_value_t = 1)]
     min_kurus: u64,
     #[arg(long, default_value_t = 20000101)]
@@ -39,6 +43,13 @@ struct Common {
 enum Cmd {
     /// print the guest image id (bytes32) — the escrow's `image_id`
     ImageId,
+    /// print the payment reference for an offer + wallet
+    Reference {
+        #[arg(long)]
+        offer_id: u64,
+        #[arg(long)]
+        buyer: String,
+    },
     /// run the guest in the executor (no proof) and print the journal / public values
     Execute(Common),
     /// generate a Groth16 receipt (x86 + `rzup install risc0-groth16`; RISC0_DEV_MODE=1 gives a fake receipt)
@@ -65,6 +76,7 @@ fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     match Cli::parse().cmd {
         Cmd::ImageId => println!("{}", image_id_hex()),
+        Cmd::Reference { offer_id, buyer } => println!("{}", zkotc_lib::payment_reference(offer_id, &buyer)),
         Cmd::Execute(c) => {
             let (input, d) = prepare(&c)?;
             println!("dekont: {} {} {} amount {} debited {} {:?} sorgu {:?} payee {:?} @ bank {:?}", d.date_yyyymmdd, d.time, d.fis_no, d.amount_kurus, d.debited_kurus, d.direction, d.fast_sorgu_no(), d.recipient_name(), d.recipient_bank_code());
@@ -93,5 +105,5 @@ fn prepare(c: &Common) -> Result<(zkotc_lib::ProverInput, zkotc_lib::dekont::Dek
     let eml = std::fs::read(&c.eml)?;
     let rt = tokio::runtime::Runtime::new()?;
     let der = rt.block_on(resolve_dkim_der(&eml, c.dns, Some(PINNED_DER)))?;
-    build_input(eml, der, &c.iban, &c.name, c.min_kurus, c.since, c.offer_id)
+    build_input(eml, der, &c.iban, &c.name, c.min_kurus, c.since, c.offer_id, &c.buyer)
 }

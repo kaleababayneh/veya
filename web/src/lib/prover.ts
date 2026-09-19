@@ -5,6 +5,7 @@ export type JobStatus = "queued" | "executing" | "proving" | "done" | "failed";
 export type ProverJob = {
   id: string;
   status: JobStatus;
+  /** the reservation id the proof is bound to (the prover API still calls it offer_id) */
   offer_id: number;
   created_at: number;
   updated_at: number;
@@ -12,11 +13,12 @@ export type ProverJob = {
   claim?: {
     dkim_key_hash: string;
     domain_hash: string;
-    recipient_iban_hash: string;
+    payee_hash: string;
     amount_kurus: number;
     date_yyyymmdd: number;
     nullifier: string;
     offer_id: number;
+    reference_hash: string;
   } | null;
   public_values?: string | null;
   proof?: string | null;
@@ -48,6 +50,8 @@ export const proverInfo = () => fetch(`${config.proverUrl}/info`).then((r) => j<
 export async function createJob(args: {
   emlBase64: string;
   offerId: bigint;
+  /** claiming wallet — the dekont must carry paymentReference(offerId, buyer) */
+  buyer: string;
   recipientIban: string;
   recipientName: string;
   minAmountKurus: bigint;
@@ -59,6 +63,7 @@ export async function createJob(args: {
     body: JSON.stringify({
       eml_base64: args.emlBase64,
       offer_id: Number(args.offerId),
+      buyer: args.buyer,
       recipient_iban: args.recipientIban,
       recipient_name: args.recipientName,
       min_amount_kurus: Number(args.minAmountKurus),
@@ -81,6 +86,6 @@ export const fileToBase64 = (f: File) =>
 export const JOB_STEPS: { key: JobStatus; label: string; help: string }[] = [
   { key: "queued", label: "Queued", help: "Waiting for the prover." },
   { key: "executing", label: "Checking e-mail", help: "DKIM signature, e-dekont attachment and transfer details are verified." },
-  { key: "proving", label: "Generating proof", help: "RISC Zero zkVM run → Groth16 receipt over BN254 (2–10 min)." },
+  { key: "proving", label: "Generating proof", help: "RISC Zero zkVM run → Groth16 receipt over BN254 (~15 s on the GPU prover)." },
   { key: "done", label: "Proof ready", help: "Submit it to the escrow contract to receive your crypto." },
 ];

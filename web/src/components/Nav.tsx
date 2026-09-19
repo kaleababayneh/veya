@@ -21,8 +21,8 @@ export function Nav() {
           zkOTC <span className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-warn">testnet</span>
         </Link>
         <nav className="hidden items-center gap-1 sm:flex">
-          {link("/", "Offers")}
-          {link("/offers/new", "Sell crypto")}
+          {link("/", "Market")}
+          {link("/sell", "Post an ad")}
           {link("/me", "My activity")}
           {link("/how-it-works", "How it works")}
         </nav>

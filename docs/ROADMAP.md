@@ -6,7 +6,7 @@ web app deployed. Not yet done: one real Groth16 receipt through `fulfill`.
 ## 0. Close the loop (this week, before the hackathon)
 | # | Task | Why it is first |
 |---|---|---|
-| 0.1 | ~~Rent an x86 box (or GPU), produce a **real** receipt for a real Ziraat e-mail~~ **Done 2026-09-08/09:** real receipt verified by the router on testnet (tx 27a5f44d…); RTX 4090 host proves in 30 s (`docs/OPERATIONS.md`). Still open: submit `fulfill` end to end (needs an offer whose payee is the real recipient). | The only untested link: escrow `fulfill` with a real receipt. |
+| 0.1 | ~~Rent an x86 box (or GPU), produce a **real** receipt for a real Ziraat e-mail~~ **Done 2026-09-08/09:** real receipt verified by the router on testnet (tx 27a5f44d…); RTX 4090 host proves in 30 s (`docs/OPERATIONS.md`). **Full `fulfill` done 2026-09-10** (offer #3, real ₺50 FAST, tx afdbb4c2…). | — |
 | 0.2 | Two Ziraat accounts, a real ₺50 FAST, full UI flow with Freighter on both sides | Finds UX gaps no unit test can. |
 | 0.3 | Pin `image_id` in the repo (`prover/IMAGE_ID`) + CI check; GitHub Actions for lib/contract tests, clippy, wasm + guest build, web lint/build | Guest changes silently invalidate the escrow config. |
 | 0.4 | Prover hardening: persistent job store (SQLite/Postgres), worker queue, auth token + rate limit on `POST /jobs`, metrics | Today jobs live in memory in one process. |
@@ -23,10 +23,10 @@ consider having the buyer put `ZKOTC-<offer id>` in the transfer description for
 ## 1. Trust & safety (weeks 2–6)
 | # | Task |
 |---|---|
-| 1.1 | ~~**Close the trust gap**~~ **Done 2026-09-09 (escrow v4):** `declare_paid` extends the lock to ≥ `proof_window` (2 h); 5 % seller bond, `claim_bond` for a valid proof within 3 days of a release, `withdraw_bond` afterwards; takeover of a stale lock counts as a release; events `PaymentDeclared`/`BondSlashed`/`BondReturned`. Open: buyer-side bond or per-wallet lock limit against declare-without-paying griefing. |
+| 1.1 | ~~**Close the trust gap**~~ **Done 2026-09-09 (escrow v4):** `declare_paid` extends the lock to ≥ `proof_window` (2 h); 5 % seller bond, `claim_bond` for a valid proof within 3 days of a release, `withdraw_bond` afterwards; takeover of a stale lock counts as a release; events `PaymentDeclared`/`BondSlashed`/`BondReturned`. Open: buyer-side bond or per-wallet lock limit against declare-without-paying griefing. **2026-09-10:** payment reference binds the proof to the claiming wallet (`ZKOTC <offer> <code>` in the FAST description); parser hardened against description injection; `l=` DKIM signatures refused. |
 | 1.2 | **DKIM key registry** contract: `(domain_hash → [key_hash, valid_from, valid_to])`, admin via timelock/multisig, daily monitor of `msg2._domainkey.ileti.ziraatbank.com.tr` (and future banks). |
 | 1.3 | **Prover privacy**: run `zkotc-server` inside a TEE (AWS Nitro or SGX, which you already work with) with remote attestation shown in the UI; publish a Docker image so buyers can self-host. Boundless is not private — use it only for users who opt in. |
-| 1.4 | **DKIM verifier assurance**: fuzz + differential tests against dkimpy over a corpus (RFC 6376 vectors, folded headers, `l=`, multiple signatures, relaxed/relaxed). Property tests for the statement parser. |
+| 1.4 | **DKIM verifier assurance**: fuzz + differential tests against dkimpy over a corpus (RFC 6376 vectors, folded headers, multiple signatures, relaxed/relaxed; `l=` is now refused outright). Property tests for the dekont parser (injection cases added 2026-09-10). |
 | 1.5 | Escrow review: reentrancy-free token flows, TTL/archival handling for old offers, event schema freeze, admin multisig. External audit before mainnet. |
 
 ## 2. Product (months 2–4)
@@ -34,8 +34,8 @@ consider having the buyer put `ZKOTC-<offer id>` in the transfer description for
 |---|---|
 | 2.1 | **Gmail OAuth** (`gmail.readonly`, `messages.get?format=raw`) to fetch the statement `.eml` automatically; IMAP fallback. Removes the "Show original → Download" step. |
 | 2.2 | **Bank providers**: abstraction in `zkotc-lib` (`domain`, `parse`, `nullifier`), guest commits a provider id, escrow allow-list per provider. Add İş Bankası, Garanti, Yapı Kredi, Akbank (each: DKIM domain/key + parser + test e-mails). |
-| 2.3 | **Seller privacy**: keep only `iban_hash` on-chain; reveal IBAN/name to the locked buyer through the API after SEP-10 auth. |
-| 2.4 | **Market features**: partial fills, price in bps vs an XLM/USDC↔TRY reference, maker fees, reputation from fulfilled/cancelled counts, limits per wallet. |
+| 2.3 | ~~**Seller privacy**~~ **Done 2026-09-10 (v5):** payee details sealed to a reveal key, only `payee_hash` + ciphertext on-chain, revealed to the reserving wallet via `/api/reveal` after a signed message (raw or SEP-53) and verified against the hash client-side. Next: move the reveal key into a TEE. |
+| 2.4 | **Market features**: ~~partial fills~~ **done 2026-10 (v5 ads + reservations, per-ad and per-buyer caps, maker counters)**; still open: price pegged to an XLM/USDC↔TRY reference (Reflector oracle) with a spread, maker fees, reputation beyond counters, buyer-side bond. |
 | 2.5 | **Onboarding**: sponsored trustlines/reserves for USDC, wallet kit on mobile, Turkish UI. |
 | 2.6 | **Indexer + notifications**: Soroban events → Postgres (own RPC poller or Mercury), activity pages, Telegram/e-mail alerts for lock/expiry/fulfil. |
 

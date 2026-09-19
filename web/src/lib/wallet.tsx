@@ -11,6 +11,8 @@ type WalletCtx = {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   signTransaction: (xdr: string, opts?: { networkPassphrase?: string; address?: string }) => Promise<{ signedTxXdr: string; signerAddress?: string }>;
+  /** Sign a plain-text message with the connected wallet (used to prove wallet control to the reveal service). */
+  signMessage: (message: string) => Promise<{ signedMessage: string; signerAddress?: string }>;
 };
 
 const Ctx = createContext<WalletCtx | null>(null);
@@ -63,9 +65,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [kit, address],
   );
 
+  const signMessage = useCallback<WalletCtx["signMessage"]>(
+    async (message) => {
+      if (!kit) throw new Error("wallet not ready");
+      return kit.signMessage(message, { networkPassphrase: config.networkPassphrase, address: address ?? undefined });
+    },
+    [kit, address],
+  );
+
   const value = useMemo(
-    () => ({ address, connecting, ready: !!kit, connect, disconnect, signTransaction }),
-    [address, connecting, kit, connect, disconnect, signTransaction],
+    () => ({ address, connecting, ready: !!kit, connect, disconnect, signTransaction, signMessage }),
+    [address, connecting, kit, connect, disconnect, signTransaction, signMessage],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

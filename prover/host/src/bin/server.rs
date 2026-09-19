@@ -1,6 +1,6 @@
 //! zkotc-server: HTTP prover (RISC Zero backend).
 //!
-//!   POST /jobs   {eml_base64, offer_id, recipient_iban, recipient_name, min_amount_kurus, since_yyyymmdd}
+//!   POST /jobs   {eml_base64, offer_id, buyer, recipient_iban, recipient_name, min_amount_kurus, since_yyyymmdd}
 //!   GET  /jobs/{id}
 //!   GET  /info   {image_id, prover_mode, dkim_source, public_values_len}
 //!   GET  /health
@@ -71,6 +71,8 @@ struct DekontJson {
 struct NewJob {
     eml_base64: String,
     offer_id: u64,
+    /// claiming wallet; the dekont must carry payment_reference(offer_id, buyer)
+    buyer: String,
     recipient_iban: String,
     #[serde(default)]
     recipient_name: String,
@@ -213,7 +215,7 @@ async fn create_job(
         return Err(bad("e-mail larger than 2 MiB".into()));
     }
     let der = resolve_dkim_der(&eml, st.dkim_dns, Some(PINNED_DER)).await.map_err(|e| bad(format!("dkim key: {e}")))?;
-    let (input, d) = build_input(eml, der, &req.recipient_iban, &req.recipient_name, req.min_amount_kurus, req.since_yyyymmdd, req.offer_id).map_err(|e| bad(e.to_string()))?;
+    let (input, d) = build_input(eml, der, &req.recipient_iban, &req.recipient_name, req.min_amount_kurus, req.since_yyyymmdd, req.offer_id, &req.buyer).map_err(|e| bad(e.to_string()))?;
     // fail fast on the host with the exact same code the guest runs
     let claim = zkotc_lib::prove_payment(&input).map_err(|e| bad(format!("verification failed: {e}")))?;
 

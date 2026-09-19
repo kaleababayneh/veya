@@ -6,6 +6,8 @@ use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DkimError {
+    /// the signature limits the signed body length (`l=`): anything appended after it would be unsigned
+    BodyLengthTag,
     NoSignature,
     UnsupportedAlgorithm(String),
     MalformedSignature(String),
@@ -144,6 +146,10 @@ fn verify_one(headers: &[Header], sig_idx: usize, body: &[u8], pk: &RsaPublicKey
         return Err(DkimError::UnsupportedAlgorithm(sig.algorithm.clone()));
     }
 
+    // a length-limited body hash would let anyone append an unsigned attachment behind the signed part
+    if sig.body_length.is_some() {
+        return Err(DkimError::BodyLengthTag);
+    }
     // body hash — simple canonicalization is hashed in place (no copy of the ~100 KB body)
     let body_digest: [u8; 32] = match (sig.canon_body, sig.body_length) {
         (Canon::Simple, None) => {

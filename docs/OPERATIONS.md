@@ -27,7 +27,7 @@ across machines with `RISC0_USE_DOCKER=1` (Docker is not installed on the VM); a
 ```sh
 sudo systemctl status zkotc-prover; sudo journalctl -u zkotc-prover -f      # logs (no e-mail bodies)
 sudo systemctl status caddy; sudo journalctl -u caddy -f
-~/zkotc/prover/target/release/zkotc prove --eml x.eml --iban TR... --offer-id N --dns --out proof.json   # manual proof
+~/zkotc/prover/target/release/zkotc prove --eml x.eml --iban TR... --name "AD SOYAD" --offer-id N --buyer G... --dns --out proof.json   # manual proof
 ```
 Proving is two-phase: succinct STARK receipt (cached per job in `SUCCINCT_CACHE_DIR`, or `--succinct-cache` on the CLI) →
 Groth16 wrap in Docker. If the wrap fails, retry it without redoing the STARK: `zkotc wrap --succinct <file> --out proof.json`.
