@@ -155,3 +155,5 @@ The first iteration used SP1 with our own Soroban Groth16 verifier (verified a r
 - **Other limits:** payers must bank with Ziraat; Ziraat's DKIM key is RSA-1024 (only the bank can forge, but it is a weak key by
   today's standards); the .eml must be downloaded from a computer (phones cannot export it); a proof after the 3-day bond window
   is not compensated; a buyer can delay a maker by the 2-hour protection window without paying.
+
+VAKIF

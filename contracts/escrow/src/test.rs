@@ -653,3 +653,24 @@ fn date_math() {
     assert_eq!(quote_kurus(1, PRICE, 7), 1);
     assert_eq!(quote_kurus(3 * ONE, 3333, 7), 9999);
 }
+
+/// A receipt signed by a second bank (different DKIM domain) settles only after `set_domains` lists it.
+#[test]
+fn second_bank_domain_needs_set_domains() {
+    let w = setup();
+    let id = create(&w);
+    let rid = w.client.reserve(&id, &w.buyer, &SLICE).id;
+    // same claim, domain hash (bytes 32..64) swapped for another bank's
+    let pv = proof_for(&w, rid, b"row-vakif");
+    let mut raw = [0u8; 184];
+    pv.copy_into_slice(&mut raw);
+    raw[32..64].copy_from_slice(&[0xABu8; 32]);
+    let pv2 = Bytes::from_slice(&w.env, &raw);
+    assert_eq!(w.client.try_settle(&rid, &w.buyer, &pv2, &good_proof(&w.env)), Err(Ok(Error::DomainMismatch)));
+    let mut domains = Vec::new(&w.env);
+    domains.push_back(BytesN::from_array(&w.env, &[0xABu8; 32]));
+    w.client.set_domains(&domains);
+    assert_eq!(w.client.domains().len(), 2, "config domain + the extra one");
+    let claim = w.client.settle(&rid, &w.buyer, &pv2, &good_proof(&w.env));
+    assert_eq!(claim.reservation_id, rid);
+}

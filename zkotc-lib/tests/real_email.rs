@@ -9,6 +9,9 @@ fn dir() -> String {
 fn der() -> Vec<u8> {
     std::fs::read(format!("{}/ziraat-ileti-msg2.der", dir())).unwrap()
 }
+fn vakif_der() -> Vec<u8> {
+    std::fs::read(format!("{}/vakifbank-smtp2.der", dir())).unwrap()
+}
 fn sample(prefix: &str) -> Option<Vec<u8>> {
     std::fs::read_dir(format!("{}/private", dir()))
         .ok()?
@@ -108,4 +111,62 @@ fn payment_reference_format() {
 fn dkim_rejects_length_limited_signatures() {
     let eml = b"DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/simple; d=ileti.ziraatbank.com.tr; s=msg2; l=10;\r\n\th=from:subject; bh=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=; b=AAAA\r\nFrom: a@ileti.ziraatbank.com.tr\r\nSubject: x\r\n\r\nbody\r\n";
     assert_eq!(dkim::verify(eml, &der()).unwrap_err(), dkim::DkimError::BodyLengthTag);
+}
+
+// ───────────────────────────── VakıfBank (PDF dekont) ─────────────────────────────
+
+/// Real outgoing FAST from a VakıfBank account (2026-09-11, ₺240 with fees ₺8.37): DKIM verifies with the
+/// bank's smtp2 key, the PDF parses into the shared Dekont shape, and the typed açıklama carries the reference.
+#[test]
+fn vakif_outgoing_dekont_proves() {
+    let Some(eml) = sample("vakif-outgoing") else { eprintln!("skipped: no vakif outgoing sample"); return };
+    assert_eq!(provider_of(&eml), Some(Provider::Vakif));
+    let d = inspect_dekont(&eml).expect("dekont");
+    assert_eq!(d.direction, dekont::Direction::Outgoing);
+    assert_eq!(d.date_yyyymmdd, 20260911);
+    assert_eq!(d.time, "15:03:34");
+    assert_eq!(d.amount_kurus, 24000);
+    assert_eq!(d.debited_kurus, 24837);
+    assert_eq!(d.fast_sorgu_no(), Some("2920248293"));
+    assert_eq!(d.recipient_iban_masked(), Some("TR40 0001 2009 7610 0004 0001 30"));
+    assert_eq!(d.recipient_bank_code(), Some("00012"));
+    assert_eq!(d.recipient_name(), Some("İ.T.Ü.STRATEJİ GELİŞTİRME DAİRE BAŞKANLIĞI"));
+    assert_eq!(d.aciklama(), Some("YUZME HAVUZU AYLİK 707261015"));
+    // payee binding is the same derivation the escrow uses for a full IBAN + name
+    assert_eq!(d.payee_hash(), payee::payee_hash_from_full("TR40 0001 2009 7610 0004 0001 30", "İ.T.Ü.STRATEJİ GELİŞTİRME DAİRE BAŞKANLIĞI"));
+    // wrong-wallet reference is refused; a token that is in the açıklama proves end to end
+    let expected = payment_reference(9, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+    assert_eq!(
+        prove_payment(&ProverInput { eml: eml.clone(), dkim_pubkey_der: vakif_der(), offer_id: 9, attachment: None, reference: expected.clone() }).unwrap_err(),
+        Error::ReferenceMissing { expected }
+    );
+    let claim = prove_payment(&ProverInput { eml, dkim_pubkey_der: vakif_der(), offer_id: 9, attachment: None, reference: "707261015".into() }).expect("prove_payment");
+    assert_eq!(claim.amount_kurus, 24000);
+    assert_eq!(claim.date_yyyymmdd, 20260911);
+    assert_eq!(claim.payee_hash, d.payee_hash().unwrap());
+    assert_eq!(claim.domain_hash, sha256_of(b"vakifbank.com.tr"));
+    assert_eq!(claim.dkim_key_hash, sha256_of(&vakif_der()));
+}
+
+/// The receiving side of a transfer (`Gelen FAST`) must never prove a payment.
+#[test]
+fn vakif_incoming_dekont_is_rejected() {
+    let Some(eml) = sample("vakif-incoming") else { eprintln!("skipped: no vakif incoming sample"); return };
+    let d = inspect_dekont(&eml).expect("dekont");
+    assert_eq!(d.direction, dekont::Direction::Incoming);
+    assert_eq!(d.amount_kurus, 5800);
+    assert_eq!(d.aciklama(), Some("ZKOTC8089340"));
+    assert_eq!(prove_payment(&ProverInput { eml, dkim_pubkey_der: vakif_der(), offer_id: 8, attachment: None, reference: "ZKOTC8089340".into() }).unwrap_err(), Error::NotOutgoing);
+}
+
+/// A Ziraat key cannot verify a Vakıf mail and vice versa.
+#[test]
+fn keys_are_not_interchangeable() {
+    let Some(eml) = sample("vakif-outgoing") else { return };
+    assert!(matches!(prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 1, attachment: None, reference: "707261015".into() }).unwrap_err(), Error::Dkim(_)));
+}
+
+fn sha256_of(b: &[u8]) -> [u8; 32] {
+    use sha2::Digest;
+    sha2::Sha256::digest(b).into()
 }

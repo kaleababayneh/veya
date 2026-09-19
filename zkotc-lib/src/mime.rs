@@ -34,13 +34,13 @@ fn part_name(pheaders: &[Header]) -> String {
     param(&pct, "name").or_else(|| param(&disp, "filename")).unwrap_or_default()
 }
 
-fn is_wanted(pheaders: &[Header], name_prefix: &str) -> bool {
+fn is_wanted(pheaders: &[Header], name_prefix: &str, ext: &str) -> bool {
     let name = part_name(pheaders);
-    name.starts_with(name_prefix) && name.ends_with(".html")
+    name.starts_with(name_prefix) && name.ends_with(ext)
 }
 
 /// Host side: find the `<name_prefix>*.html` part (top-level multipart only).
-pub fn locate_attachment(headers: &[Header], body: &[u8], name_prefix: &str) -> Option<AttachmentHint> {
+pub fn locate_attachment(headers: &[Header], body: &[u8], name_prefix: &str, ext: &str) -> Option<AttachmentHint> {
     let delim = boundary_delim(headers).ok()?;
     let mut starts = Vec::new();
     let mut pos = 0usize;
@@ -65,7 +65,7 @@ pub fn locate_attachment(headers: &[Header], body: &[u8], name_prefix: &str) -> 
             continue;
         }
         let pheaders = parse_headers(&body[hs..hs + blank + 2]);
-        if is_wanted(&pheaders, name_prefix) {
+        if is_wanted(&pheaders, name_prefix, ext) {
             return Some(AttachmentHint {
                 part_start: part_start as u32,
                 payload_start: payload_start as u32,
@@ -78,7 +78,7 @@ pub fn locate_attachment(headers: &[Header], body: &[u8], name_prefix: &str) -> 
 
 /// Guest side: check that `h` delimits exactly one complete top-level part of `body` whose headers name
 /// a `<name_prefix>*.html` base64 attachment, and return its raw base64 payload.
-pub fn attachment_at<'a>(headers: &[Header], body: &'a [u8], h: AttachmentHint, name_prefix: &str) -> Result<&'a [u8], String> {
+pub fn attachment_at<'a>(headers: &[Header], body: &'a [u8], h: AttachmentHint, name_prefix: &str, ext: &str) -> Result<&'a [u8], String> {
     let delim = boundary_delim(headers)?;
     let (ps, pe, end) = (h.part_start as usize, h.payload_start as usize, h.payload_end as usize);
     let bad = |what: &str| Err(format!("attachment hint rejected: {what}"));
@@ -107,8 +107,8 @@ pub fn attachment_at<'a>(headers: &[Header], body: &'a [u8], h: AttachmentHint, 
         return bad("payload spans a boundary");
     }
     let pheaders = parse_headers(hdr);
-    if !is_wanted(&pheaders, name_prefix) {
-        return bad("part is not the e-dekont html attachment");
+    if !is_wanted(&pheaders, name_prefix, ext) {
+        return bad("part is not the expected dekont attachment");
     }
     let cte = header_value(&pheaders, "Content-Transfer-Encoding").unwrap_or_default();
     if !cte.eq_ignore_ascii_case("base64") {
@@ -119,8 +119,8 @@ pub fn attachment_at<'a>(headers: &[Header], body: &'a [u8], h: AttachmentHint, 
 
 /// Locate + verify + decode (host helpers and tests; the guest uses the hint path).
 pub fn extract_html_attachment(headers: &[Header], body: &[u8], name_prefix: &str) -> Result<Vec<u8>, String> {
-    let hint = locate_attachment(headers, body, name_prefix).ok_or_else(|| format!("no {name_prefix}*.html attachment found"))?;
-    decode_base64_mime(attachment_at(headers, body, hint, name_prefix)?)
+    let hint = locate_attachment(headers, body, name_prefix, ".html").ok_or_else(|| format!("no {name_prefix}*.html attachment found"))?;
+    decode_base64_mime(attachment_at(headers, body, hint, name_prefix, ".html")?)
 }
 
 /// Value of `;key=value` (optionally quoted) in a header like `Content-Type: a/b; name="x"`.
@@ -276,13 +276,13 @@ mod tests {
         let b64 = wrap76(&base64::engine::general_purpose::STANDARD.encode(html.as_bytes()));
         let body = body(&b64);
         let h = headers();
-        let hint = locate_attachment(&h, &body, "e-dekont").expect("located");
-        let payload = attachment_at(&h, &body, hint, "e-dekont").expect("verified");
+        let hint = locate_attachment(&h, &body, "e-dekont", ".html").expect("located");
+        let payload = attachment_at(&h, &body, hint, "e-dekont", ".html").expect("verified");
         assert_eq!(decode_base64_mime(payload).unwrap(), html.as_bytes());
         assert_eq!(extract_html_attachment(&h, &body, "e-dekont").unwrap(), html.as_bytes());
 
         // tampered hints are rejected
-        let reject = |hh: AttachmentHint| attachment_at(&h, &body, hh, "e-dekont").is_err();
+        let reject = |hh: AttachmentHint| attachment_at(&h, &body, hh, "e-dekont", ".html").is_err();
         assert!(reject(AttachmentHint { payload_start: hint.payload_start + 4, ..hint }), "payload_start moved");
         assert!(reject(AttachmentHint { payload_end: hint.payload_end - 1, ..hint }), "payload_end moved");
         assert!(reject(AttachmentHint { part_start: hint.part_start + 1, ..hint }), "part_start moved");

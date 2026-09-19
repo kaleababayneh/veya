@@ -13,7 +13,9 @@ pub mod dekont;
 pub mod dkim;
 pub mod mime;
 pub mod payee;
+pub mod pdf;
 pub mod text;
+pub mod vakif;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -139,6 +141,45 @@ pub fn iban_hash(iban: &str) -> [u8; 32] {
     sha256(norm.as_bytes())
 }
 
+/// A bank whose DKIM-signed receipt e-mails the guest understands. Chosen from the DKIM `d=` domain, which
+/// the signature itself authenticates; the escrow then checks the domain hash against its allow-list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    /// Ziraat Bankası: `e-dekont*.html` inside the signed body
+    Ziraat,
+    /// VakıfBank: `Dekont.pdf` inside the signed body
+    Vakif,
+}
+
+impl Provider {
+    pub fn for_domain(domain: &str) -> Option<Provider> {
+        match domain.to_ascii_lowercase().as_str() {
+            "ileti.ziraatbank.com.tr" => Some(Provider::Ziraat),
+            vakif::DOMAIN => Some(Provider::Vakif),
+            _ => None,
+        }
+    }
+    /// (attachment name prefix, extension)
+    pub fn attachment(&self) -> (&'static str, &'static str) {
+        match self {
+            Provider::Ziraat => (DEKONT_ATTACHMENT_PREFIX, ".html"),
+            Provider::Vakif => (vakif::ATTACHMENT_PREFIX, vakif::ATTACHMENT_EXT),
+        }
+    }
+    pub fn parse(&self, attachment: &[u8]) -> Result<dekont::Dekont, String> {
+        match self {
+            Provider::Ziraat => dekont::parse(attachment),
+            Provider::Vakif => vakif::parse(attachment),
+        }
+    }
+    pub fn name(&self) -> &'static str {
+        match self {
+            Provider::Ziraat => "Ziraat",
+            Provider::Vakif => "VakıfBank",
+        }
+    }
+}
+
 /// Fully verified extraction; this is what the zkVM guest runs.
 pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
     let verified = dkim::verify(&input.eml, &input.dkim_pubkey_der)?;
@@ -152,14 +193,16 @@ pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
         });
     }
 
+    let provider = Provider::for_domain(&verified.domain).ok_or_else(|| Error::Mime(format!("unsupported bank domain {}", verified.domain)))?;
+    let (prefix, ext) = provider.attachment();
     let hint = match input.attachment {
         Some(h) => h,
-        None => mime::locate_attachment(&verified.headers, verified.body, DEKONT_ATTACHMENT_PREFIX)
-            .ok_or_else(|| Error::Mime(format!("no {DEKONT_ATTACHMENT_PREFIX}*.html attachment found")))?,
+        None => mime::locate_attachment(&verified.headers, verified.body, prefix, ext)
+            .ok_or_else(|| Error::Mime(format!("no {prefix}*{ext} attachment found")))?,
     };
-    let payload = mime::attachment_at(&verified.headers, verified.body, hint, DEKONT_ATTACHMENT_PREFIX).map_err(Error::Mime)?;
+    let payload = mime::attachment_at(&verified.headers, verified.body, hint, prefix, ext).map_err(Error::Mime)?;
     let attachment = mime::decode_base64_mime(payload).map_err(Error::Mime)?;
-    let d = dekont::parse(&attachment).map_err(Error::Dekont)?;
+    let d = provider.parse(&attachment).map_err(Error::Dekont)?;
     if d.direction != dekont::Direction::Outgoing {
         return Err(Error::NotOutgoing);
     }
@@ -206,11 +249,18 @@ pub fn inspect_dekont(eml: &[u8]) -> Result<dekont::Dekont, Error> {
 /// Host helper: parse the dekont (no DKIM check) and locate its attachment for `ProverInput::attachment`.
 /// `eml` must be CRLF-normalized (`dkim::normalized`) — the offsets refer to those bytes.
 pub fn locate_dekont(eml: &[u8]) -> Result<(dekont::Dekont, mime::AttachmentHint), Error> {
+    let (_, domain) = dkim::selector_and_domain(eml).ok_or_else(|| Error::Mime("no DKIM-Signature header".into()))?;
+    let provider = Provider::for_domain(&domain).ok_or_else(|| Error::Mime(format!("unsupported bank domain {domain}")))?;
+    let (prefix, ext) = provider.attachment();
     let (headers, body) = dkim::split_message(eml);
     let headers = dkim::parse_headers(headers);
-    let hint = mime::locate_attachment(&headers, body, DEKONT_ATTACHMENT_PREFIX)
-        .ok_or_else(|| Error::Mime(format!("no {DEKONT_ATTACHMENT_PREFIX}*.html attachment found")))?;
-    let payload = mime::attachment_at(&headers, body, hint, DEKONT_ATTACHMENT_PREFIX).map_err(Error::Mime)?;
-    let html = mime::decode_base64_mime(payload).map_err(Error::Mime)?;
-    Ok((dekont::parse(&html).map_err(Error::Dekont)?, hint))
+    let hint = mime::locate_attachment(&headers, body, prefix, ext).ok_or_else(|| Error::Mime(format!("no {prefix}*{ext} attachment found")))?;
+    let payload = mime::attachment_at(&headers, body, hint, prefix, ext).map_err(Error::Mime)?;
+    let attachment = mime::decode_base64_mime(payload).map_err(Error::Mime)?;
+    Ok((provider.parse(&attachment).map_err(Error::Dekont)?, hint))
+}
+
+/// Which bank sent `eml` (from its DKIM-Signature `d=`), for messages and UI; `None` = unsupported.
+pub fn provider_of(eml: &[u8]) -> Option<Provider> {
+    dkim::selector_and_domain(eml).and_then(|(_, d)| Provider::for_domain(&d))
 }

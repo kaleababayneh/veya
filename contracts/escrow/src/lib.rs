@@ -217,6 +217,8 @@ pub enum DataKey {
     Config,
     Tokens,
     DkimKeys,
+    /// extra accepted DKIM domain hashes (banks besides `Config.domain_hash`)
+    Domains,
     AdCount,
     Ad(u64),
     ReservationCount,
@@ -850,6 +852,18 @@ impl OtcEscrow {
         env.storage().instance().get(&DataKey::DkimKeys).unwrap_or(Vec::new(&env))
     }
 
+    /// Accepted bank domain hashes: `Config.domain_hash` plus the extra ones set with `set_domains`.
+    pub fn domains(env: Env) -> Vec<BytesN<32>> {
+        let cfg = config(&env).ok();
+        let mut out: Vec<BytesN<32>> = env.storage().instance().get(&DataKey::Domains).unwrap_or(Vec::new(&env));
+        if let Some(c) = cfg {
+            if !out.contains(&c.domain_hash) {
+                out.push_front(c.domain_hash);
+            }
+        }
+        out
+    }
+
     pub fn is_nullifier_used(env: Env, nullifier: BytesN<32>) -> bool {
         env.storage().persistent().has(&DataKey::Nullifier(nullifier))
     }
@@ -888,6 +902,14 @@ impl OtcEscrow {
     pub fn set_dkim_keys(env: Env, keys: Vec<BytesN<32>>) -> Result<(), Error> {
         config(&env)?.admin.require_auth();
         env.storage().instance().set(&DataKey::DkimKeys, &keys);
+        Ok(())
+    }
+
+    /// Extra bank domains (sha256 of the DKIM `d=`) whose signed receipts settle here, besides the config one.
+    /// Each bank also needs its DKIM key hash in `set_dkim_keys`; the guest picks the parser by domain.
+    pub fn set_domains(env: Env, domains: Vec<BytesN<32>>) -> Result<(), Error> {
+        config(&env)?.admin.require_auth();
+        env.storage().instance().set(&DataKey::Domains, &domains);
         Ok(())
     }
 
@@ -994,7 +1016,10 @@ fn verify_and_consume(
         return Err(Error::DkimKeyNotTrusted);
     }
     if claim.domain_hash != cfg.domain_hash {
-        return Err(Error::DomainMismatch);
+        let extra: Vec<BytesN<32>> = env.storage().instance().get(&DataKey::Domains).unwrap_or(Vec::new(env));
+        if !extra.contains(&claim.domain_hash) {
+            return Err(Error::DomainMismatch);
+        }
     }
     if claim.payee_hash != ad.payee_hash {
         return Err(Error::PayeeMismatch);

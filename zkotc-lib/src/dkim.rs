@@ -185,7 +185,20 @@ fn verify_one(headers: &[Header], sig_idx: usize, body: &[u8], pk: &RsaPublicKey
             .find(|(i, h)| !used[*i] && h.name.eq_ignore_ascii_case(want));
         if let Some((i, h)) = pos {
             used[i] = true;
-            data.extend_from_slice(&canonicalize_header(&h.name, &h.raw_value, sig.canon_header));
+            // Gmail replaces a malformed Message-ID on receipt ("…SMTPIN_ADDED_BROKEN@mx.google.com") after it
+            // has verified the signature, and keeps the value the sender signed in X-Google-Original-Message-ID.
+            // VakıfBank signs a bare-number Message-ID, so verify against the preserved original. This only
+            // restores what the bank signed; a forged mail still needs a valid signature over that value.
+            let raw_value = if want.eq_ignore_ascii_case("message-id") && crate::text::find_bytes(&h.raw_value, b"SMTPIN_ADDED_BROKEN").is_some() {
+                headers
+                    .iter()
+                    .find(|o| o.name.eq_ignore_ascii_case("X-Google-Original-Message-ID"))
+                    .map(|o| o.raw_value.clone())
+                    .unwrap_or_else(|| h.raw_value.clone())
+            } else {
+                h.raw_value.clone()
+            };
+            data.extend_from_slice(&canonicalize_header(&h.name, &raw_value, sig.canon_header));
             data.extend_from_slice(b"\r\n");
         }
     }

@@ -9,6 +9,7 @@ description = "Host+guest shared logic: DKIM verification, MIME extraction, Zira
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10.9"
 rsa = { version = "=0.9.6", features = ["sha2"] }
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
 
 [dev-dependencies]
 hex = "0.4"
