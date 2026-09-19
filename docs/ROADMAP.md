@@ -6,7 +6,7 @@ web app deployed. Not yet done: one real Groth16 receipt through `fulfill`.
 ## 0. Close the loop (this week, before the hackathon)
 | # | Task | Why it is first |
 |---|---|---|
-| 0.1 | Rent an x86 box (or GPU), `rzup install risc0-groth16`, run `zkotc-server`, produce a **real** receipt for a real Ziraat e-mail and submit `fulfill` on testnet | The only untested link: claim digest ↔ Nethermind verifier ↔ escrow. Measure CPU cost of `fulfill`. |
+| 0.1 | ~~Rent an x86 box (or GPU), produce a **real** receipt for a real Ziraat e-mail~~ **Done 2026-09-08/09:** real receipt verified by the router on testnet (tx 27a5f44d…); RTX 4090 host proves in 30 s (`docs/OPERATIONS.md`). Still open: submit `fulfill` end to end (needs an offer whose payee is the real recipient). | The only untested link: escrow `fulfill` with a real receipt. |
 | 0.2 | Two Ziraat accounts, a real ₺50 FAST, full UI flow with Freighter on both sides | Finds UX gaps no unit test can. |
 | 0.3 | Pin `image_id` in the repo (`prover/IMAGE_ID`) + CI check; GitHub Actions for lib/contract tests, clippy, wasm + guest build, web lint/build | Guest changes silently invalidate the escrow config. |
 | 0.4 | Prover hardening: persistent job store (SQLite/Postgres), worker queue, auth token + rate limit on `POST /jobs`, metrics | Today jobs live in memory in one process. |

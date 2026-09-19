@@ -2,6 +2,7 @@
 //!   zkotc image-id
 //!   zkotc execute --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 [--min-kurus N] [--since YYYYMMDD] [--dns]
 //!   zkotc prove   --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --out proof.json [--dns]
+//! Env GROTH16_NATIVE_DIR=<dir>: Groth16 wrap with the reference CPU prover run natively (see host/src/lib.rs).
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use zkotc_host::{build_input, execute, image_id_hex, prove_groth16, resolve_dkim_der, wrap_cached, ClaimJson, PINNED_DER};

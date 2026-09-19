@@ -115,11 +115,87 @@ pub fn prove_groth16(input: &ProverInput, succinct_cache: Option<&std::path::Pat
     bundle(&receipt, total_cycles)
 }
 
-/// Groth16 wrap of a succinct receipt (docker + risc0-groth16 on x86_64).
+/// Groth16 wrap of a succinct receipt (x86_64 + `rzup install risc0-groth16`). Engine:
+/// * `GROTH16_NATIVE_DIR=<dir>`: RISC Zero's reference CPU prover run natively — the binaries and
+///   proving key from `risczero/risc0-groth16-prover:v2025-04-03.1` unpacked into `<dir>`, no Docker.
+///   Needs the `native-groth16` feature (implied by `cuda`). This is the engine for GPU hosts: the
+///   CUDA Groth16 wrap in risc0 3.0.x crashes / miscomputes (risc0/risc0#3785, #3760).
+/// * otherwise `default_prover().compress` (Docker on a CPU host).
 pub fn wrap_groth16(succinct: &Receipt) -> Result<Receipt> {
-    let receipt = default_prover().compress(&ProverOpts::groth16(), succinct).context("groth16 wrap")?;
+    let receipt = match native_groth16_dir() {
+        Some(dir) => wrap_groth16_native(succinct, &dir)?,
+        None => default_prover().compress(&ProverOpts::groth16(), succinct).context("groth16 wrap")?,
+    };
     receipt.verify(ZKOTC_GUEST_ID).context("receipt verification")?;
     Ok(receipt)
+}
+
+/// `GROTH16_NATIVE_DIR`, if set.
+pub fn native_groth16_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("GROTH16_NATIVE_DIR").filter(|v| !v.is_empty()).map(std::path::PathBuf::from)
+}
+
+#[cfg(feature = "native-groth16")]
+const NATIVE_GROTH16_FILES: [&str; 5] = ["stark_verify", "stark_verify.dat", "prover", "stark_verify.cs", "stark_verify_final.pk.dmp"];
+
+/// Same pipeline as `risc0_groth16::prove::docker::shrink_wrap`, without the container:
+/// identity_p254 (GPU) → seal JSON → circom witness (`stark_verify`) → Groth16 (`prover`).
+#[cfg(feature = "native-groth16")]
+fn wrap_groth16_native(succinct: &Receipt, tools: &std::path::Path) -> Result<Receipt> {
+    use risc0_groth16::{prove::to_json, ProofJson, Seal};
+    use risc0_zkvm::{recursion::identity_p254, sha::Digestible, Groth16Receipt, Groth16ReceiptVerifierParameters, InnerReceipt};
+    use std::{process::Command, time::Instant};
+
+    for f in NATIVE_GROTH16_FILES {
+        if !tools.join(f).is_file() {
+            return Err(anyhow!("GROTH16_NATIVE_DIR={}: missing {f}", tools.display()));
+        }
+    }
+    let inner = succinct.inner.succinct().map_err(|e| anyhow!("not a succinct receipt: {e:?}"))?;
+
+    let t = Instant::now();
+    let ident = identity_p254(inner).context("identity_p254")?;
+    tracing::info!("identity_p254: {:.1}s", t.elapsed().as_secs_f64());
+
+    let work = std::env::temp_dir().join(format!("zkotc-groth16-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&work)?;
+    let result = (|| -> Result<Receipt> {
+        let input = work.join("input.json");
+        let wtns = work.join("witness.wtns");
+        let proof = work.join("proof.json");
+        std::fs::write(&input, to_json(&ident.get_seal_bytes())?)?;
+
+        let t = Instant::now();
+        // circom's generated witness generator wants a 16 MiB stack and loads `stark_verify.dat` from the cwd
+        run("witness", Command::new("sh").current_dir(tools).arg("-c").arg("ulimit -s 16384 && exec ./stark_verify \"$0\" \"$1\"").arg(&input).arg(&wtns))?;
+        tracing::info!("groth16 witness: {:.1}s", t.elapsed().as_secs_f64());
+
+        let t = Instant::now();
+        run("prover", Command::new(tools.join("prover")).current_dir(tools).arg("stark_verify.cs").arg("stark_verify_final.pk.dmp").arg(&wtns).arg(&proof))?;
+        tracing::info!("groth16 prover: {:.1}s", t.elapsed().as_secs_f64());
+
+        let proof: ProofJson = serde_json::from_str(&std::fs::read_to_string(&proof)?)?;
+        let seal: Seal = proof.try_into()?;
+        let g16 = Groth16Receipt::new(seal.to_vec(), inner.claim.clone(), Groth16ReceiptVerifierParameters::default().digest());
+        Ok(Receipt::new(InnerReceipt::Groth16(g16), succinct.journal.bytes.clone()))
+    })();
+    let _ = std::fs::remove_dir_all(&work);
+    result
+}
+
+#[cfg(not(feature = "native-groth16"))]
+fn wrap_groth16_native(_: &Receipt, _: &std::path::Path) -> Result<Receipt> {
+    Err(anyhow!("GROTH16_NATIVE_DIR is set but this binary was built without the `native-groth16` feature"))
+}
+
+#[cfg(feature = "native-groth16")]
+fn run(what: &str, cmd: &mut std::process::Command) -> Result<()> {
+    let out = cmd.output().with_context(|| format!("spawn groth16 {what}"))?;
+    if !out.status.success() {
+        let err: String = String::from_utf8_lossy(&out.stderr).chars().take(2000).collect();
+        return Err(anyhow!("groth16 {what} failed ({}): {err}", out.status));
+    }
+    Ok(())
 }
 
 fn bundle(receipt: &Receipt, total_cycles: u64) -> Result<ProofBundle> {

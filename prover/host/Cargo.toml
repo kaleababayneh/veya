@@ -20,6 +20,7 @@ path = "src/bin/server.rs"
 methods = { path = "../methods" }
 risc0-zkvm = { workspace = true }
 risc0-ethereum-contracts = { workspace = true }
+risc0-groth16 = { workspace = true, optional = true }
 zkotc-lib = { workspace = true }
 serde = { workspace = true }
 serde_json = "1"
@@ -40,5 +41,7 @@ dotenvy = "0.15"
 
 [features]
 default = []
-cuda = ["risc0-zkvm/cuda"]
+# Groth16 wrap with RISC Zero's reference CPU prover run natively (GROTH16_NATIVE_DIR), no Docker
+native-groth16 = ["risc0-zkvm/prove", "dep:risc0-groth16"]
+cuda = ["risc0-zkvm/cuda", "native-groth16"]
 metal = ["risc0-zkvm/metal"]

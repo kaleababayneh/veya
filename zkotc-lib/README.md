@@ -6,7 +6,8 @@ zkVM-agnostic core shared by the RISC Zero guest and the host prover. Pure Rust,
 |---|---|
 | `dkim` | RFC 6376 verification (rsa-sha256, simple/relaxed canonicalization, `l=`), header parsing, `selector_and_domain` |
 | `mime` | pull the `e-dekont.html` attachment out of the signed multipart body (base64 / quoted-printable) |
-| `dekont` | parse Ziraat's per-transaction e-dekont: account IBAN, date/time/fiş no, direction, amount, counterparty IBAN |
+| `dekont` | parse Ziraat's per-transaction e-dekont: date/time/fiş no, direction, İşlem Tutarı, Fast Sorgu No, recipient name/bank/masked account |
+| `payee` | payee binding hash from a masked dekont or from full IBAN + name (Turkish name folding) |
 | `text` | Turkish amount/date parsing, IBAN search, HTML text cleanup |
 | `lib` | `ProverInput` → `prove_payment` → `PaymentClaim` (152-byte journal), nullifier, `inspect_dekont` for the host |
 

@@ -49,10 +49,10 @@ Out: partial fills, order matching, other payer banks, fiat→fiat, mobile walle
 | Currency | dekont amount must be in TL/TRY | Ziraat TRY account only in v1 |
 | Fee | **25 bps** of the token leg, taken at fulfil, sent to `treasury`; admin-settable, hard cap 100 bps | comparable to on-ramp rails; visible before lock |
 | Date window | `payment_date` (dd/mm/yyyy from the dekont, Istanbul local) must satisfy **istanbul_date(locked_at) ≤ payment_date ≤ istanbul_date(ledger_now)**, Istanbul = UTC+3 fixed (no DST since 2016) | statement has no time-of-day; payments before the lock are not accepted (prevents recycling an unrelated earlier payment) |
-| Payee match | `sha256(normalize(IBAN))` from proof == `offer.iban_hash`; normalize = uppercase, strip spaces | dekonts print IBANs with spaces; normalization strips them |
+| Payee match | `payee_hash` from proof == `offer.payee_hash`, where payee_hash = sha256(TRcc ‖ bank code ‖ last 6 IBAN digits ‖ folded recipient name) | Ziraat dekonts mask IBANs (`TR37 **** … 0000 01`) but print recipient name and bank |
 | Sender bank | e-mail `From` domain hash == `ileti.ziraatbank.com.tr`; DKIM key hash ∈ contract's trusted set | only bank-signed evidence |
 | Binding | public values include `offer_id` and `buyer` address; contract checks both | proof cannot be redirected |
-| Nullifier | `sha256(payer_iban ‖ payment_date ‖ fiş_no ‖ payee_iban ‖ amount_kurus)`; contract stores used nullifiers forever | one bank transfer fulfils at most one offer |
+| Nullifier | sha256(domain ‖ Fast Sorgu No ‖ payer account ‖ date ‖ time ‖ fiş no ‖ amount ‖ description ‖ settlement); contract stores used nullifiers forever | one bank transfer fulfils at most one offer |
 | Tokens | admin allow-list: native XLM SAC, USDC (`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` on testnet) | |
 | Pause | admin can pause create/lock; fulfil/release/cancel/reclaim always work | never trap funds |
 | Seller identity on-chain | v1 stores plaintext `payee_iban` + `payee_name` in the offer (needed for FAST) **with explicit consent copy**; v1.1: store only `iban_hash`, deliver plaintext to the locked buyer via the API | ship reliability first; IBANs are routinely shared with counterparties |

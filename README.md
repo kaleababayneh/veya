@@ -22,15 +22,27 @@ buyer  ──fulfill(j,seal)▶└───────────────�
 |---|---|---|
 | `contracts/escrow` | Offer lifecycle, token custody, journal checks, nullifiers, fee, pause, upgrade; calls the RISC Zero router | 16 tests |
 | `zkotc-lib` | zkVM-agnostic: DKIM verifier (RFC 6376), MIME extraction, Ziraat e-dekont parser, 152-byte journal | 8 tests incl. a real e-dekont e-mail |
-| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x4d8dc827…e384`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | ~3M cycles expected per e-dekont (to be measured on an outgoing sample) |
+| `prover` | **RISC Zero** guest (`zkotc-guest`, image id `0x9ec8ddc3…7cbf`), `zkotc` CLI (image-id / execute / prove), `zkotc-server` | 5.19M cycles on a real outgoing e-dekont |
 | `contracts/risc0-verifier-deployment.toml` | testnet deployment of [NethermindEth/stellar-risc0-verifier](https://github.com/NethermindEth/stellar-risc0-verifier) (router, timelock, Groth16 verifier v3.0.0, emergency stop) | routed, selector `73c457ba` |
 | `web` | Next.js 16 app: offers, sell, reserve → pay → upload .eml → claim, wallet via Stellar Wallets Kit | `next build` clean |
 | `docs` | PRD, UX copy, demo script, QA checklist | |
 
+## Proven end to end (2026-09-08)
+A real Ziraat outgoing-FAST e-dekont → DKIM verified inside the RISC Zero guest (5.19M cycles) → Groth16 receipt
+(84 min on the 4-vCPU Azure VM; **30 s on an RTX 4090**, see below) → **verified on Stellar testnet by the RISC Zero router**:
+[tx 27a5f44d…](https://stellar.expert/explorer/testnet/tx/27a5f44d076e05f978237f55110e7212e38decf180f14d5472e14cfd8d8b36d3) (fee 0.022 XLM). Tampered journal or wrong image id are rejected.
+The receipt (seal, journal, image id — no e-mail content) is in `contracts/testdata-real-receipt.json`.
+
+**GPU timing (2026-09-09, Vast.ai RTX 4090, 32 vCPU EPYC, $0.36/h):** the same e-dekont proves in **30 s end to end** —
+STARK + succinct receipt ~10 s on the GPU, then the Groth16 wrap 19 s (identity_p254 0.3 s on GPU, circom witness 7 s,
+Groth16 prover 12 s on CPU). The router accepts the seal; a tampered journal is rejected. The wrap uses RISC Zero's
+reference CPU prover run natively (`GROTH16_NATIVE_DIR`, no Docker) because the CUDA Groth16 wrap in risc0 3.0.x
+crashes ([risc0#3785](https://github.com/risc0/risc0/issues/3785)). Setup in `docs/OPERATIONS.md`.
+
 ## Testnet deployments (Protocol 28)
 | Contract | Id |
 |---|---|
-| otc-escrow (RISC Zero) | `CCTBLF3XKBUYDT2H6T7DLYB7R2BUX2KEB43FZS6A5BKOHLN4LLQZZCZF` |
+| otc-escrow (RISC Zero) | `CBVLRH22A6QWM53NDMYKYTSNS5M7472IPLRJTSWCMU4WHBCX6JBZ5ERW` |
 | RISC Zero verifier router | `CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG` |
 | RISC Zero Groth16 verifier (params v3.0.0, selector 73c457ba) | `CAJXPOAJXOWAHTSIGZHBHRJCMYPF7JGR7ZZLBBSUZZZ3HW23YOGZKCQI` |
 | Emergency stop / timelock | `CCKZKOFGJ2YHD7BWAH4JBGQQYCRFO4ELTK772LXMPUDDGMUTHYUUV2T4` / `CDJ47SNGJXWT435KYW4QO4QX262RUANOKLRGHC2PLW2YI7EQHFCQAMBR` |
@@ -59,7 +71,7 @@ cd web && cp .env.example .env.local && npm i && npm run dev                # ht
 
 ## Generating real proofs (the only step that needs hardware or credits)
 RISC Zero's Groth16 (STARK→SNARK) wrapper is **x86-only** (not Apple Silicon, not even in Docker). Options:
-1. **x86 Linux box** (16+ vCPU, ≥16 GB, optionally an NVIDIA GPU with `--features cuda`): `rzup install risc0-groth16`, then run `zkotc-server`. One e-dekont proof is expected around 3M cycles (to be measured on an outgoing sample): the 4-vCPU VM took ~1h45m for a 6.7M-cycle guest, so use a GPU host (about a minute) for real users.
+1. **x86 Linux box** (16+ vCPU, ≥16 GB, optionally an NVIDIA GPU with `--features cuda`): `rzup install risc0-groth16`, then run `zkotc-server`. One e-dekont proof is 5.19M cycles: the 4-vCPU VM needs on the order of an hour; use a GPU host (about a minute) for real users.
 2. **Boundless** (RISC Zero's proof market, Base mainnet, paid in ETH): request a Groth16 receipt with the `boundless-market` SDK and feed `seal`/`journal` to `fulfill`.
 On a Mac you can `execute` (exact journal, any machine) and, with `RISC0_DEV_MODE=1`, produce fake receipts for UI development — the router rejects them on-chain by design. Receipts must come from risc0 **3.0.x** (control root `a54dc85a…`), which is what the deployed verifier pins; a new RISC Zero major needs a new verifier version behind the router.
 
@@ -71,8 +83,9 @@ A real prover runs on an x86 Azure VM behind Caddy/TLS at `https://4-239-243-216
 The e-mail is kept in memory only for the job; bodies are never logged. DKIM key from DNS (`DKIM_DNS=1`) or the pinned DER.
 
 ## Journal / public values (152 bytes)
-`dkim_key_hash ‖ domain_hash ‖ recipient_iban_hash ‖ amount_kurus(u64) ‖ date_yyyymmdd(u64) ‖ nullifier ‖ offer_id(u64)`.
-Escrow checks: router.verify(seal, image_id, sha256(journal)) · offer_id · DKIM key trusted · domain · IBAN hash == offer · amount ≥ price · Istanbul day(lock) ≤ date ≤ Istanbul day(now) · nullifier unused.
+`dkim_key_hash ‖ domain_hash ‖ payee_hash ‖ amount_kurus(u64) ‖ date_yyyymmdd(u64) ‖ nullifier ‖ offer_id(u64)`.
+`payee_hash = sha256("zkotc/payee/v1" ‖ TRcc ‖ bank code(5) ‖ last 6 IBAN digits ‖ Turkish-folded recipient name)` — Ziraat's dekont masks IBANs, so the binding uses the visible check digits, bank code, IBAN tail and the recipient name; the escrow derives the same hash from the seller's full IBAN + name.
+Escrow checks: router.verify(seal, image_id, sha256(journal)) · offer_id · DKIM key trusted · domain · payee_hash == offer · amount (İşlem Tutarı) ≥ price · Istanbul day(lock) ≤ date ≤ Istanbul day(now) · nullifier unused.
 
 ## History
 The first iteration used SP1 with our own Soroban Groth16 verifier (verified a real SP1 proof on-chain). It was replaced by RISC Zero for ecosystem alignment; that code lives at git tag `sp1-backend`.

@@ -12,6 +12,7 @@ zkotc-lib = { path = "../zkotc-lib" }
 risc0-zkvm = { version = "3.0" }
 risc0-build = { version = "3.0" }
 risc0-ethereum-contracts = { version = "3.0" }
+risc0-groth16 = { version = "3.0", features = ["prove"] }
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.10"
 hex = "0.4"

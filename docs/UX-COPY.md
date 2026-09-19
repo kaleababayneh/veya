@@ -68,7 +68,7 @@ Voice: plain, specific, no crypto jargon where a bank word exists. English prima
 | 11 | InvalidPublicValues | The proof output is malformed. Regenerate the proof. |
 | 12 | DkimKeyNotTrusted | The e-mail was signed with a DKIM key this contract does not trust yet. |
 | 13 | DomainMismatch | The e-mail was not signed by ileti.ziraatbank.com.tr. |
-| 14 | IbanMismatch | The dekont's recipient IBAN is not the seller's IBAN. |
+| 14 | PayeeMismatch | The dekont's recipient (name, bank, account) does not match the seller. |
 | 15 | AmountTooLow | The transfer in the dekont is smaller than the offer amount. |
 | 16 | DateOutOfWindow | The payment date is before you reserved this offer (Istanbul calendar day). |
 | 17 | NullifierUsed | This bank transfer was already used to settle another offer. |

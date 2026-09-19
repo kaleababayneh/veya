@@ -7148,6 +7148,7 @@ dependencies = [
  "hickory-resolver",
  "methods",
  "risc0-ethereum-contracts",
+ "risc0-groth16",
  "risc0-zkvm",
  "serde",
  "serde_json",
