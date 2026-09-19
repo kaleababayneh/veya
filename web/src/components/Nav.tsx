@@ -13,6 +13,14 @@ export function Nav() {
       {label}
     </Link>
   );
+  const links = (
+    <>
+      {link("/", "Market")}
+      {link("/sell", "Post an ad")}
+      {link("/me", "My activity")}
+      {link("/how-it-works", "How it works")}
+    </>
+  );
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-bg/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
@@ -20,12 +28,7 @@ export function Nav() {
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-accent-fg text-xs font-bold">₺</span>
           zkOTC <span className="rounded-md bg-warn/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-warn">testnet</span>
         </Link>
-        <nav className="hidden items-center gap-1 sm:flex">
-          {link("/", "Market")}
-          {link("/sell", "Post an ad")}
-          {link("/me", "My activity")}
-          {link("/how-it-works", "How it works")}
-        </nav>
+        <nav className="hidden items-center gap-1 sm:flex">{links}</nav>
         {address ? (
           <Button variant="ghost" onClick={disconnect} title={address}>
             <span className="h-2 w-2 rounded-full bg-ok" /> {short(address, 5)}
@@ -36,6 +39,8 @@ export function Nav() {
           </Button>
         )}
       </div>
+      {/* phones: the same links as a scrollable row under the header */}
+      <nav className="flex gap-1 overflow-x-auto px-3 pb-2 sm:hidden">{links}</nav>
     </header>
   );
 }

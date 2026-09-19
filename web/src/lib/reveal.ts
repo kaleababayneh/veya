@@ -19,6 +19,16 @@ export type MessageSigner = (message: string) => Promise<{ signedMessage: string
 
 const cacheKey = (adId: bigint, reservationId: bigint | null, address: string) => `zkotc-payee-${adId}-${reservationId ?? "maker"}-${address}`;
 
+/** Payee details already revealed in this browser session, if any (no wallet interaction). */
+export function cachedReveal(adId: bigint, reservationId: bigint | null, address: string): Revealed | null {
+  try {
+    const cached = sessionStorage.getItem(cacheKey(adId, reservationId, address));
+    return cached ? (JSON.parse(cached) as Revealed) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Ask the reveal service for the payee details of `adId`, proving control of `address` with a wallet signature. */
 export async function requestReveal(adId: bigint, reservationId: bigint | null, address: string, signMessage: MessageSigner): Promise<Revealed> {
   const key = cacheKey(adId, reservationId, address);

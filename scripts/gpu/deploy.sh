@@ -8,6 +8,7 @@
 #   --publish        (implies --build; a no-op when up to date) store the binaries and ~/gpu-artifacts/icicle on the artifact host
 #   --switch         point the testnet escrow (set_config image_id) and web/.env.local at this box
 #   --test <eml>     submit an e-dekont through the box's API and time it (needs TEST_IBAN/TEST_NAME in scripts/gpu/.env)
+#   --no-proxy       skip re-pointing the HTTPS proxy (PROXY_URL in .env: Caddy on the artifact host, handle_path /gpu/*)
 #
 # Default run (prebuilt): ~3–4 min — ssh wait, 2.8 GB artifact sync from the artifact host, checksums, server up.
 # Settings: scripts/gpu/.env (see .env.example). Box side: scripts/gpu/bootstrap.sh. Guide: docs/GPU.md.
@@ -26,10 +27,10 @@ i=0; while [ $i -lt ${#tok[@]} ]; do
   i=$((i+1))
 done
 [ -n "$TARGET" ] || { echo "no user@host in '$CONN'"; exit 2; }
-BUILD=0; PUBLISH=0; SWITCH=0; TEST_EML=""
+BUILD=0; PUBLISH=0; SWITCH=0; NOPROXY=0; TEST_EML=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --build) BUILD=1 ;; --publish) PUBLISH=1; BUILD=1 ;; --switch) SWITCH=1 ;;
+    --build) BUILD=1 ;; --publish) PUBLISH=1; BUILD=1 ;; --switch) SWITCH=1 ;; --no-proxy) NOPROXY=1 ;;
     --test) TEST_EML=${2:?--test needs a .eml path}; shift ;;
     *) echo "unknown flag $1"; exit 2 ;;
   esac; shift
@@ -123,9 +124,26 @@ print(f"--verifier {c[\"verifier\"]} --image_id {img} --domain_hash {c[\"domain_
     echo "   run again with --switch, or: stellar contract invoke --id $ESCROW_ID --source $STELLAR_IDENTITY -- set_config … --image_id ${IMG:2}"
   fi
 fi
-if [ "$SWITCH" = 1 ] && [ -f "${WEB_ENV:-web/.env.local}" ]; then
-  sed -i.bak "s|^NEXT_PUBLIC_PROVER_URL=.*|NEXT_PUBLIC_PROVER_URL=$URL|" "${WEB_ENV:-web/.env.local}" && rm -f "${WEB_ENV:-web/.env.local}.bak"
-  echo "web: NEXT_PUBLIC_PROVER_URL=$URL written to ${WEB_ENV:-web/.env.local} — restart 'npm run dev'"
+# HTTPS for the web app (Vercel needs it): Caddy on the artifact host proxies PROXY_URL (…/gpu) to the box's public
+# port. The box's IP:port change with every rental, so re-point the proxy; PROXY_URL itself never changes.
+WEB_URL=$URL
+if [ -n "${PROXY_URL:-}" ] && [ "$NOPROXY" = 0 ] && [ "$URL" != "http://localhost:$PORT" ]; then
+  step "pointing $PROXY_URL at ${URL#http://} (Caddy on $ARTIFACT_HOST)"
+  art "sudo -n sed -i -E '/handle_path \/gpu\/\* \{/,/\}/ s#(reverse_proxy )[^ ]+#\1${URL#http://}#' /etc/caddy/Caddyfile \
+       && grep -q '${URL#http://}' /etc/caddy/Caddyfile && sudo -n systemctl reload caddy"
+  for _ in 1 2 3 4 5 6; do
+    PINFO=$(curl -sf --max-time 20 "$PROXY_URL/info" || true)
+    [ -n "$PINFO" ] && break
+    sleep 3
+  done
+  if [ "$PINFO" = "$INFO" ]; then echo "proxy ok: $PROXY_URL/info answers with the box's image id"; WEB_URL=$PROXY_URL
+  else echo "proxy check FAILED: $PROXY_URL/info returned '${PINFO:-nothing}' — Caddy on $ARTIFACT_HOST: sudo journalctl -u caddy -n 20"; exit 1; fi
+fi
+if { [ "$SWITCH" = 1 ] || [ "$WEB_URL" = "${PROXY_URL:-}" ]; } && [ -f "${WEB_ENV:-web/.env.local}" ]; then
+  if ! grep -q "^NEXT_PUBLIC_PROVER_URL=$WEB_URL\$" "${WEB_ENV:-web/.env.local}"; then
+    sed -i.bak "s|^NEXT_PUBLIC_PROVER_URL=.*|NEXT_PUBLIC_PROVER_URL=$WEB_URL|" "${WEB_ENV:-web/.env.local}" && rm -f "${WEB_ENV:-web/.env.local}.bak"
+    echo "web: NEXT_PUBLIC_PROVER_URL=$WEB_URL written to ${WEB_ENV:-web/.env.local} — restart 'npm run dev'"
+  fi
 fi
 
 if [ -n "$TEST_EML" ]; then
@@ -134,5 +152,5 @@ if [ -n "$TEST_EML" ]; then
 fi
 
 echo; echo "done in $(( $(date +%s) - T0 ))s.  prover: $URL   image_id: $IMG"
-echo "HTTPS for the Vercel site: on the Azure VM set /etc/caddy/Caddyfile handle_path /gpu/* → reverse_proxy ${URL#http://} and reload caddy."
+[ "$WEB_URL" = "$URL" ] && echo "no HTTPS proxy configured (PROXY_URL in scripts/gpu/.env) — the Vercel site cannot call a plain-http prover."
 echo "logs on the box: ~/zkotc/server.log, ~/zkotc/bootstrap.log.  Destroy the instance when finished — nothing on it needs saving."

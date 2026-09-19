@@ -93,7 +93,35 @@ export default function Market() {
             Be the first maker: <Link className="underline" href="/sell">post an ad</Link>.
           </Empty>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-line">
+          <>
+            {/* phones: one card per ad */}
+            <ul className="space-y-3 sm:hidden">
+              {rows.map((a) => {
+                const t = tokenByAddress(a.token);
+                return (
+                  <li key={a.id.toString()} className="rounded-2xl border border-line bg-panel p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{a.nickname || short(a.seller, 5)}</p>
+                        <p className="text-xs text-muted">{a.settled_count} trades · {a.active_reservations} active</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-semibold">{fmtTRY(a.price_kurus)}</p>
+                        <p className="text-xs text-muted">per {t.symbol}</p>
+                      </div>
+                    </div>
+                    <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <div><dt className="text-xs text-muted">Available</dt><dd>{fmtToken(a.remaining, a.decimals)} {t.symbol}</dd></div>
+                      <div><dt className="text-xs text-muted">Per trade</dt><dd>{fmtTRY(a.min_try_kurus)} – {fmtTRY(a.max_try_kurus)}</dd></div>
+                    </dl>
+                    <Link href={`/ads/${a.id}`} className="mt-3 block">
+                      <Button className="w-full">Buy {t.symbol}</Button>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto rounded-2xl border border-line sm:block">
             <table className="w-full text-sm">
               <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-muted">
                 <tr>
@@ -137,6 +165,7 @@ export default function Market() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </div>

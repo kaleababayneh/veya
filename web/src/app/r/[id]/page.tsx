@@ -5,20 +5,21 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ReservationStatus, AdStatus } from "@/contracts/escrow";
 import { useWallet } from "@/lib/wallet";
 import { escrow, getAd, getReservation, getConfig, send, unwrapResult, explainError, ERROR_HELP, type Ad, type Reservation, type EscrowConfig } from "@/lib/escrow";
-import { requestReveal, type Revealed } from "@/lib/reveal";
+import { requestReveal, cachedReveal, type Revealed } from "@/lib/reveal";
 import { createJob, getJob, fileToBase64, JOB_STEPS, proverInfo, type ProverJob, type ProverInfo } from "@/lib/prover";
 import { gmailConfigured, getGmailToken, findDekontMails, fetchRawEmlBase64, forgetGmailToken } from "@/lib/gmail";
 import { tokenByAddress } from "@/lib/tokens";
 import { fmtToken, fmtTRY, fmtIBAN, fmtDate, fmtYmd, istanbulYmd, nowSec, short, hexToBuffer, bytesToHex, paymentReference } from "@/lib/format";
 import { config } from "@/lib/config";
-import { Alert, BackLink, Button, Card, ReservationBadge, Spinner, Steps, TxLink } from "@/components/ui";
+import { Alert, BackLink, Button, Card, ReservationBadge, Spinner, TxLink } from "@/components/ui";
 import { Countdown } from "@/components/Countdown";
 
 export default function ReservationPage() {
   const { id: idParam } = useParams<{ id: string }>();
   const id = useMemo(() => BigInt(idParam), [idParam]);
   const search = useSearchParams();
-  const { address, connect, signTransaction, signMessage } = useWallet();
+  const wallet = useWallet();
+  const { connect, signTransaction, signMessage } = wallet;
 
   const [r, setR] = useState<Reservation | null>(null);
   const [ad, setAd] = useState<Ad | null>(null);
@@ -87,6 +88,9 @@ export default function ReservationPage() {
   }
 
   const t = tokenByAddress(ad.token);
+  // dev only: `?as=buyer` / `?as=maker` previews the other side's layout without their wallet (no action can succeed)
+  const preview = process.env.NODE_ENV === "development" ? search.get("as") : null;
+  const address = preview === "buyer" ? r.buyer : preview === "maker" ? ad.seller : wallet.address;
   const isBuyer = !!address && address === r.buyer;
   const isSeller = !!address && address === ad.seller;
   const active = r.status === ReservationStatus.Active;
@@ -98,6 +102,8 @@ export default function ReservationPage() {
   const payout = r.amount - (r.amount * BigInt(feeBps)) / 10000n;
   const lateClaimDays = cfg ? Math.round(Number(cfg.late_claim_window) / 86400) : 3;
   const bondStr = `${fmtToken(r.bond_slice, ad.decimals)} ${t.symbol}`;
+  // a reveal done earlier in this session (also on the ad page) is reused without another signature
+  const shownPayee = payee ?? (isBuyer ? cachedReveal(ad.id, id, address!) : isSeller ? cachedReveal(ad.id, null, address!) : null);
 
   const c = () => escrow(address, signTransaction);
   const declarePaid = () =>
@@ -142,12 +148,12 @@ export default function ReservationPage() {
       <BackLink href={`/ads/${ad.id}`}>← Ad #{ad.id.toString()}</BackLink>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted">Reservation #{r.id.toString()} · maker {ad.nickname || short(ad.seller, 5)}</p>
+          <p className="text-sm text-muted">Reservation #{r.id.toString()} · from {ad.nickname || short(ad.seller, 5)}</p>
           <h1 className="text-3xl font-semibold tracking-tight">
-            {fmtToken(r.amount, ad.decimals)} {t.symbol} <span className="text-muted">for</span> {fmtTRY(r.try_amount_kurus)}
+            {isBuyer ? "You get " : ""}{fmtToken(payout, ad.decimals)} {t.symbol} <span className="text-muted">for</span> {fmtTRY(r.try_amount_kurus)}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {fmtTRY(ad.price_kurus)} per {t.symbol} · buyer <span className="mono">{short(r.buyer, 5)}</span>{isBuyer && " (you)"} · reserved {fmtDate(r.created_at)}
+            {fmtTRY(ad.price_kurus)} per {t.symbol}{!isBuyer && <> · buyer <span className="mono">{short(r.buyer, 5)}</span></>} · reserved {fmtDate(r.created_at)}
           </p>
         </div>
         <div className="text-right">
@@ -170,12 +176,12 @@ export default function ReservationPage() {
 
       {/* buyer: active reservation */}
       {active && isBuyer && (
-        <BuyerFlow mode="buy" r={r} ad={ad} cfg={cfg} info={info} address={address!} payee={payee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={settle} onRelease={release} busy={busy} expired={expired} />
+        <BuyerFlow mode="buy" r={r} ad={ad} cfg={cfg} info={info} address={address!} payee={shownPayee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={settle} onRelease={release} busy={busy} expired={expired} />
       )}
 
       {/* buyer: released after declaring — claim the maker's bond slice with the same proof */}
       {claimOpen && isBuyer && (
-        <BuyerFlow mode="bond" r={r} ad={ad} cfg={cfg} info={info} address={address!} payee={payee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={claimBond} onRelease={release} busy={busy} expired={false} />
+        <BuyerFlow mode="bond" r={r} ad={ad} cfg={cfg} info={info} address={address!} payee={shownPayee} revealing={revealing} onReveal={reveal} onDeclare={declarePaid} onClaim={claimBond} onRelease={release} busy={busy} expired={false} />
       )}
 
       {/* maker / others */}
@@ -224,17 +230,54 @@ export default function ReservationPage() {
         </Alert>
       )}
 
-      <Card>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Terms of this reservation</h3>
-        <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-          <div><dt className="text-muted">You send</dt><dd className="font-semibold">{fmtTRY(r.try_amount_kurus)} by FAST from Ziraat</dd></div>
-          <div><dt className="text-muted">You receive</dt><dd>{fmtToken(payout, ad.decimals)} {t.symbol} (after {feeBps / 100}% fee)</dd></div>
-          <div><dt className="text-muted">Bond backing you</dt><dd>{bondStr}{ad.status === AdStatus.Closed ? " (ad closed by the maker; your reservation still settles)" : ""}</dd></div>
+      <details className="rounded-2xl border border-line bg-panel p-5 text-sm">
+        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">Reservation details</summary>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div><dt className="text-muted">{isBuyer ? "You send" : "Buyer sends"}</dt><dd className="font-semibold">{fmtTRY(r.try_amount_kurus)} by FAST from Ziraat</dd></div>
+          <div><dt className="text-muted">{isBuyer ? "You receive" : "Buyer receives"}</dt><dd>{fmtToken(payout, ad.decimals)} {t.symbol} (after {feeBps / 100}% fee)</dd></div>
+          <div><dt className="text-muted">{isBuyer ? "Bond backing you" : "Bond slice"}</dt><dd>{bondStr}{ad.status === AdStatus.Closed ? " (ad closed by the maker; your reservation still settles)" : ""}</dd></div>
           <div><dt className="text-muted">Protection after declaring</dt><dd>{cfg ? Number(cfg.proof_window) / 60 : 120} min, then {lateClaimDays}-day bond claim</dd></div>
-          <div><dt className="text-muted">Payee details</dt><dd>encrypted on-chain; shown to you after a wallet signature</dd></div>
+          <div><dt className="text-muted">Payee details</dt><dd>encrypted on-chain; shown to the buyer and maker after a wallet signature</dd></div>
           <div><dt className="text-muted">Payment reference</dt><dd className="mono">{paymentReference(r.id, r.buyer)}</dd></div>
+          <div><dt className="text-muted">Buyer wallet</dt><dd className="mono">{short(r.buyer, 8)}</dd></div>
+          <div><dt className="text-muted">Maker</dt><dd className="mono">{short(ad.seller, 8)}</dd></div>
         </dl>
-      </Card>
+      </details>
+    </div>
+  );
+}
+
+function Copy({ value, label }: { value: string; label?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      className="rounded-md border border-line px-2 py-0.5 text-xs text-muted hover:bg-panel-2"
+      onClick={() => navigator.clipboard?.writeText(value).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); }).catch(() => {})}
+    >
+      {done ? "copied ✓" : (label ?? "copy")}
+    </button>
+  );
+}
+
+function StepCard({ n, title, state, summary, children }: { n: number; title: string; state: "done" | "active" | "todo"; summary?: React.ReactNode; children?: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const expanded = state === "active" || (state === "done" && open);
+  return (
+    <div className={`rounded-2xl border p-4 ${state === "active" ? "border-accent bg-panel shadow-sm" : state === "done" ? "border-line bg-panel" : "border-dashed border-line opacity-60"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold ${state === "done" ? "bg-ok text-white" : state === "active" ? "bg-accent text-accent-fg" : "bg-panel-2 text-muted"}`}>{state === "done" ? "✓" : n}</span>
+          <div>
+            <p className="font-semibold">{title}</p>
+            {state === "done" && summary && !open && <p className="text-sm text-muted">{summary}</p>}
+          </div>
+        </div>
+        {state === "done" && children && (
+          <button type="button" className="text-xs text-muted underline decoration-dotted" onClick={() => setOpen((o) => !o)}>{open ? "hide" : "show"}</button>
+        )}
+      </div>
+      {expanded && children && <div className="mt-4 space-y-3">{children}</div>}
     </div>
   );
 }
@@ -252,11 +295,12 @@ function BuyerFlow({
 }) {
   const t = tokenByAddress(ad.token);
   const [file, setFile] = useState<File | null>(null);
-  const [consent, setConsent] = useState(false);
+  const [consent, setConsent] = useState(true);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [job, setJob] = useState<ProverJob | null>(null);
   const [jobErr, setJobErr] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [gmail, setGmail] = useState<{ phase: "idle" | "auth" | "search" | "verify" | "none" | "error"; msg?: string }>({ phase: "idle" });
+  const [tick, setTick] = useState(0);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const bond = mode === "bond";
@@ -270,9 +314,10 @@ function BuyerFlow({
   const prize = bond ? `${fmtToken(r.bond_slice, ad.decimals)} ${t.symbol}` : `${fmtToken(payout, ad.decimals)} ${t.symbol}`;
   const reference = paymentReference(r.id, address);
   const canPay = !!payee && payee.verified;
-  const copyReference = () => {
-    navigator.clipboard?.writeText(reference).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {});
-  };
+  const proved = job?.status === "done" && !!job.proof && !!job.public_values;
+  const proving = !!job && job.status !== "done" && job.status !== "failed";
+  const jobStep = job ? JOB_STEPS.findIndex((s) => s.key === job.status) : -1;
+  const elapsed = job ? Math.max(0, nowSec() - job.created_at) : 0;
 
   useEffect(() => {
     const saved = localStorage.getItem(`zkotc-job-r${r.id}`);
@@ -281,10 +326,10 @@ function BuyerFlow({
   }, [r.id]);
 
   useEffect(() => {
-    if (!job || job.status === "done" || job.status === "failed") { if (poll.current) clearInterval(poll.current); return; }
-    poll.current = setInterval(() => getJob(job.id).then(setJob).catch(() => {}), 2000);
+    if (!proving) { if (poll.current) clearInterval(poll.current); return; }
+    poll.current = setInterval(() => { getJob(job!.id).then(setJob).catch(() => {}); setTick((x) => x + 1); }, 1500);
     return () => { if (poll.current) clearInterval(poll.current); };
-  }, [job]);
+  }, [job, proving]);
 
   const submitEml = async (emlBase64: string) => {
     if (!payee) throw new Error("payee details not revealed");
@@ -329,182 +374,178 @@ function BuyerFlow({
     }
   };
 
-  const stepIdx = !payee ? 0 : !paid ? 1 : job?.status === "done" ? 3 : 2;
-  const jobStep = job ? JOB_STEPS.findIndex((s) => s.key === job.status) : -1;
+  const s1: "done" | "active" | "todo" = canPay ? "done" : "active";
+  const s2: "done" | "active" | "todo" = paid ? "done" : canPay ? "active" : "todo";
+  const s3: "done" | "active" | "todo" = proved ? "done" : paid && canPay ? "active" : "todo";
+  const s4: "done" | "active" | "todo" = proved ? "active" : "todo";
+  const busyGmail = gmail.phase === "auth" || gmail.phase === "search" || gmail.phase === "verify";
+  void tick;
 
   return (
-    <Card className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold">{bond ? "Claim the maker's bond" : "Complete your purchase"}</h2>
-        <Steps current={stepIdx} steps={["Payee details", bond ? "Payment declared" : "Pay & declare", "Prove from e-mail", bond ? "Claim bond" : `Claim ${t.symbol}`]} />
-      </div>
-
+    <div className="space-y-3">
       {bond && (
         <Alert kind="warn">
-          Your reservation was released after you declared the payment on {fmtDate(r.paid_declared_at)}. Prove the transfer before <b>{fmtDate(r.late_claim_until)}</b> to
-          receive the maker&apos;s bond slice of <b>{prize}</b>. (The tokens themselves are no longer reserved for you.)
+          Your reservation was released after you declared the payment on {fmtDate(r.paid_declared_at)}. Prove the transfer before <b>{fmtDate(r.late_claim_until)}</b> to receive
+          the maker&apos;s bond slice of <b>{prize}</b>. The tokens themselves are no longer reserved for you.
         </Alert>
       )}
-      {!bond && expired && !paid && (
-        <Alert kind="warn">Your reservation timer ended. You can still settle as long as nobody releases it, so finish quickly, or release it and reserve again.</Alert>
-      )}
+      {!bond && expired && !paid && <Alert kind="warn">Your reservation timer ended. You can still settle as long as nobody releases it, so finish quickly, or release it and reserve again.</Alert>}
 
-      {/* Step 0: reveal */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">1 · Where to pay</h3>
+      {/* 1 · reveal */}
+      <StepCard n={1} title={bond ? "Where you paid" : "Where to pay"} state={s1} summary={payee ? <>{payee.name} · <span className="mono">{fmtIBAN(payee.iban)}</span></> : undefined}>
         {!payee ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted">
-              The maker&apos;s IBAN and name are encrypted on-chain. Sign a message with your wallet (no transaction, no fee) to have them revealed to you; the
-              app then checks they match the maker&apos;s on-chain commitment before showing them.
-            </p>
-            <Button onClick={onReveal} disabled={revealing}>{revealing ? <><Spinner /> Waiting for your signature…</> : "Reveal payment details"}</Button>
-          </div>
+          <>
+            <p className="text-sm text-muted">The maker&apos;s bank details are encrypted on-chain. Sign a message with your wallet to reveal them — no transaction, no fee.</p>
+            <Button className="w-full sm:w-auto" onClick={onReveal} disabled={revealing}>{revealing ? <><Spinner /> Waiting for your wallet…</> : "Reveal bank details"}</Button>
+          </>
         ) : !payee.verified ? (
           <Alert kind="error">
-            <b>Do not pay.</b> The revealed details ({fmtIBAN(payee.iban)}, {payee.name}) do not hash to this ad&apos;s on-chain payee commitment, so a proof of a
-            payment to them could never settle. Release the reservation and choose another ad.
+            <b>Do not pay.</b> The revealed details ({fmtIBAN(payee.iban)}, {payee.name}) do not match this ad&apos;s on-chain commitment, so no proof could ever settle here. Release the reservation and pick another ad.
           </Alert>
         ) : (
-          <div className="grid gap-3 rounded-xl bg-panel-2 p-4 text-sm sm:grid-cols-2">
-            <div><p className="text-muted">Alıcı IBAN</p><p className="mono select-all">{fmtIBAN(payee.iban)}</p></div>
-            <div><p className="text-muted">Alıcı adı</p><p className="select-all">{payee.name}</p></div>
-            <div><p className="text-muted">Tutar</p><p className="select-all font-semibold">{fmtTRY(r.try_amount_kurus)}</p></div>
-            <div><p className="text-muted">Transfer type</p><p>FAST (instant) from your <b>Ziraat</b> TRY account</p></div>
-            <div className="sm:col-span-2 rounded-lg border border-line bg-panel p-3">
-              <p className="text-muted">Açıklama (payment reference) — <b className="text-fg">required</b></p>
-              <p className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="mono select-all text-base font-semibold">{reference}</span>
-                <button type="button" className="rounded-md border border-line px-2 py-0.5 text-xs" onClick={copyReference}>{copied ? "copied" : "copy"}</button>
-              </p>
-              <p className="mt-1 text-xs text-muted">Type exactly this into the transfer&apos;s description. It ties the payment to your wallet: nobody who gets hold of your e-mail can claim in your place.</p>
+          <p className="text-sm text-ok">✓ Verified against the maker&apos;s on-chain commitment.</p>
+        )}
+      </StepCard>
+
+      {/* 2 · pay + declare */}
+      <StepCard n={2} title={bond ? "Payment declared" : `Send ${fmtTRY(r.try_amount_kurus)} by FAST, then declare it`} state={s2} summary={declared ? <>Declared {fmtDate(r.paid_declared_at)} · protected until {fmtDate(r.lock_expires_at)}</> : undefined}>
+        {canPay && (
+          <>
+            <div className="overflow-hidden rounded-xl border border-line">
+              <div className="bg-panel-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">FAST transfer from your Ziraat account</div>
+              <dl className="divide-y divide-line text-sm">
+                {[
+                  ["Alıcı IBAN", fmtIBAN(payee!.iban), payee!.iban.replace(/\s+/g, "")],
+                  ["Alıcı adı", payee!.name, payee!.name],
+                  ["Tutar", fmtTRY(r.try_amount_kurus), (Number(r.try_amount_kurus) / 100).toFixed(2).replace(".", ",")],
+                  ["Açıklama", reference, reference],
+                ].map(([k, v, c]) => (
+                  <div key={k} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <dt className="text-muted">{k}</dt>
+                    <dd className="flex items-center gap-2"><span className={`select-all ${k === "Alıcı IBAN" || k === "Açıklama" ? "mono" : ""} ${k === "Tutar" || k === "Açıklama" ? "font-semibold" : ""}`}>{v}</span><Copy value={c} /></dd>
+                  </div>
+                ))}
+              </dl>
             </div>
-            <p className="sm:col-span-2 text-xs text-ok">✓ These details match the maker&apos;s on-chain commitment.</p>
+            <p className="text-xs text-muted">
+              The <b>Açıklama</b> line is required: it ties the payment to your wallet, so nobody who obtains your e-mail can claim in your place.
+            </p>
+            {!paid && (tooLateToPay ? (
+              <Alert kind="error">Less than {config.minMinutesToPay} minutes remain. Do <b>not</b> send money now: release the reservation and reserve again to get a fresh timer.</Alert>
+            ) : (
+              <>
+                <Button className="w-full sm:w-auto" onClick={onDeclare} disabled={!!busy}>
+                  {busy === "Payment declared on-chain" ? <><Spinner /> Confirm in wallet…</> : "I have sent it — declare on-chain"}
+                </Button>
+                <p className="text-xs text-muted">
+                  Declaring locks the maker out for {cfg ? Number(cfg.proof_window) / 60 : 120} minutes and puts their bond of {fmtToken(r.bond_slice, ad.decimals)} {t.symbol} behind your claim. Only declare after the transfer has left your account.
+                </p>
+              </>
+            ))}
+          </>
+        )}
+      </StepCard>
+
+      {/* 3 · prove */}
+      <StepCard n={3} title="Prove it from Ziraat's e-dekont e-mail" state={s3} summary={job?.dekont ? <>Dekont {fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time} · {fmtTRY(job.dekont.amount_kurus)} · proof ready</> : undefined}>
+        {!job ? (
+          <>
+            <div className="rounded-xl bg-panel-2 p-3 text-sm">
+              <p className="font-medium">First, ask Ziraat to e-mail the receipt of this transfer:</p>
+              <p className="text-muted">Ziraat Mobil → Hesap Hareketleri → the ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} transfer → <b>Dekont Gönder</b> → <b>E-posta</b>. It arrives in about a minute, subject &quot;e-dekont&quot;.</p>
+            </div>
+            {!gmailConfigured() && (
+              <div className="space-y-2">
+                <Button className="w-full sm:w-auto" disabled title="Needs a Google OAuth client id (NEXT_PUBLIC_GOOGLE_CLIENT_ID)">Fetch it from Gmail</Button>
+                <p className="text-xs text-muted">Direct Gmail import is not enabled on this deployment yet, so download the e-mail as .eml and drop it below.</p>
+                <p className="text-center text-xs text-muted">or</p>
+              </div>
+            )}
+            {gmailConfigured() && (
+              <div className="space-y-2">
+                <Button className="w-full sm:w-auto" onClick={fetchFromGmail} disabled={!consent || busyGmail}>
+                  {gmail.phase === "auth" ? <><Spinner /> Waiting for Google…</> : gmail.phase === "search" ? <><Spinner /> Searching your inbox…</> : gmail.phase === "verify" ? <><Spinner /> {gmail.msg}</> : "Fetch it from Gmail"}
+                </Button>
+                {gmail.phase === "none" && (
+                  <Alert kind="warn">
+                    No e-dekont from Ziraat since {fmtDate(r.created_at)} in this Gmail yet. Send it from Ziraat Mobil, wait a minute, then{" "}
+                    <button className="underline" onClick={fetchFromGmail}>check again</button> · <button className="underline" onClick={() => { forgetGmailToken(); fetchFromGmail(); }}>use another Google account</button>.
+                  </Alert>
+                )}
+                {gmail.phase === "error" && <Alert kind="error">{gmail.msg}</Alert>}
+                <p className="text-center text-xs text-muted">or</p>
+              </div>
+            )}
+            <label
+              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center text-sm ${file ? "border-ok/60 bg-ok/5" : "border-line hover:border-accent/60"}`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }}
+            >
+              <input type="file" accept=".eml,message/rfc822" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              {file ? <span className="font-medium">{file.name}</span> : <span className="font-medium">Drop the e-mail here as .eml, or click to choose</span>}
+              <span className="text-xs text-muted">Gmail: open the e-mail → ⋮ → Show original → Download original. Apple Mail: File → Save As → Raw Message Source. Never forward it.</span>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-muted">
+              <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+              <span>
+                Send this one e-mail to the prover; it is kept in memory only and only hashes, the amount, the date and a nullifier go on-chain.{" "}
+                <button type="button" className="underline" onClick={() => setShowPrivacy((v) => !v)}>{showPrivacy ? "less" : "details"}</button>
+                {showPrivacy && <span className="block pt-1">Prover: <span className="mono">{config.proverUrl}</span>{info ? ` · mode ${info.prover_mode} · DKIM key from ${info.dkim_source}` : ""}. The e-mail is checked (DKIM signature, recipient, amount, reference) before proving and discarded when the job ends.</span>}
+              </span>
+            </label>
+            <Button className="w-full sm:w-auto" onClick={upload} disabled={!file || !consent}>Verify e-mail and start proving</Button>
+            {jobErr && <Alert kind="error">{jobErr}</Alert>}
+          </>
+        ) : (
+          <div className="space-y-3">
+            {proving && (
+              <div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-panel-2"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(95, Math.round((elapsed / 18) * 100))}%` }} /></div>
+                <p className="mt-1 text-xs text-muted">Proving on the GPU · {elapsed}s elapsed · usually about 15 s</p>
+              </div>
+            )}
+            <ol className="space-y-1 text-sm">
+              {JOB_STEPS.map((st, i) => (
+                <li key={st.key} className={`flex items-center gap-2 ${i < jobStep || job.status === "done" ? "text-ok" : i === jobStep ? "" : "text-muted"}`}>
+                  {i === jobStep && job.status !== "done" ? <Spinner /> : <span className="w-4 text-center">{i < jobStep || job.status === "done" ? "✓" : "·"}</span>}
+                  <span className="font-medium">{st.label}</span> <span className="text-xs text-muted">{st.help}</span>
+                </li>
+              ))}
+            </ol>
+            {job.dekont && (
+              <p className="rounded-lg bg-panel-2 p-3 text-xs">
+                Dekont: <b>{fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time}</b> · {job.dekont.fis_no} · {fmtTRY(job.dekont.amount_kurus)} → {job.dekont.recipient_name ?? "?"}{job.dekont.fast_sorgu_no ? ` · FAST ${job.dekont.fast_sorgu_no}` : ""}
+              </p>
+            )}
+            {job.status === "failed" && (
+              <Alert kind="error">
+                Proof failed: {job.error}. <button className="underline" onClick={() => { localStorage.removeItem(`zkotc-job-r${r.id}`); setJob(null); }}>Try again</button>
+              </Alert>
+            )}
           </div>
         )}
-      </section>
+      </StepCard>
 
-      {/* Step 1: declare */}
-      {!bond && canPay && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">2 · Send the transfer, then declare it</h3>
-          {paid ? (
-            <Alert kind="ok">
-              Payment declared on {fmtDate(r.paid_declared_at)}. The maker cannot release before {fmtDate(r.lock_expires_at)}; after that a valid proof still wins their bond slice of{" "}
-              {fmtToken(r.bond_slice, ad.decimals)} {t.symbol} for {cfg ? Math.round(Number(cfg.late_claim_window) / 86400) : 3} days.
-            </Alert>
-          ) : tooLateToPay ? (
-            <Alert kind="error">
-              Less than {config.minMinutesToPay} minutes remain. Do <b>not</b> send money now: release the reservation and reserve again to get a fresh timer.
-            </Alert>
-          ) : (
-            <div className="space-y-2">
-              <Button onClick={onDeclare} disabled={!!busy}>
-                {busy === "Payment declared on-chain" ? <><Spinner /> Confirm in wallet…</> : `I have sent ${fmtTRY(r.try_amount_kurus)} — declare it on-chain`}
-              </Button>
-              <p className="text-xs text-muted">
-                Records the time of your payment. From then on nobody can release your reservation for {cfg ? Number(cfg.proof_window) / 60 : 120} minutes, and the maker&apos;s bond
-                backs your claim afterwards. Declare only after the transfer has left your account.
-              </p>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Step 2+3: e-mail → proof */}
-      {paid && canPay && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">3 · Prove the payment from Ziraat&apos;s e-dekont e-mail</h3>
-          {!job ? (
-            <>
-              <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-                <li>Ziraat Mobil / İnternet Şubesi → <b>Hesap Hareketleri</b> → open the FAST transfer you sent → <b>Dekont Gönder</b> → <b>E-posta</b>.</li>
-                <li>The e-mail (subject <b>e-dekont</b>) arrives within ~2 minutes from ileti.ziraatbank.com.tr.</li>
-              </ol>
-              <label className="flex items-start gap-2 text-xs text-muted">
-                <input type="checkbox" className="mt-0.5" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                <span>
-                  I understand the e-mail (the dekont of this one transfer) is sent to the prover at <span className="mono">{config.proverUrl}</span>
-                  {info ? ` (mode: ${info.prover_mode}, DKIM key: ${info.dkim_source})` : ""}, kept only in memory while the proof is generated, and that only hashes, the amount,
-                  the date and a nullifier go on-chain.
-                </span>
-              </label>
-              {gmailConfigured() ? (
-                <div className="space-y-2 rounded-xl border border-line bg-panel-2 p-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button onClick={fetchFromGmail} disabled={!consent || gmail.phase === "auth" || gmail.phase === "search" || gmail.phase === "verify"}>
-                      {gmail.phase === "auth" ? <><Spinner /> Waiting for Google…</> : gmail.phase === "search" ? <><Spinner /> Searching your inbox…</> : gmail.phase === "verify" ? <><Spinner /> {gmail.msg}</> : "Fetch the e-dekont from Gmail"}
-                    </Button>
-                    <span className="text-xs text-muted">Read-only Gmail access from this browser; the Google token never leaves the page and only the matching e-mail is sent to the prover.</span>
-                  </div>
-                  {gmail.phase === "none" && (
-                    <Alert kind="warn">
-                      No e-dekont from Ziraat since your reservation ({fmtDate(r.created_at)}) is in this Gmail account yet. Send it from Ziraat Mobil (Dekont Gönder → E-posta), wait a minute,
-                      then <button className="underline" onClick={fetchFromGmail}>check again</button>. Different mailbox? <button className="underline" onClick={() => { forgetGmailToken(); fetchFromGmail(); }}>switch Google account</button>.
-                    </Alert>
-                  )}
-                  {gmail.phase === "error" && <Alert kind="error">{gmail.msg}</Alert>}
-                </div>
-              ) : null}
-              <details className="text-sm">
-                <summary className="cursor-pointer text-muted">{gmailConfigured() ? "Not on Gmail? Upload the .eml file instead" : "Upload the .eml file"}</summary>
-                <div className="mt-2 space-y-2">
-                  <p className="text-xs text-muted">In Gmail: open the e-mail → ⋮ → <b>Show original</b> → <b>Download original</b>. In Apple Mail: File → Save As → Raw Message Source. Do not forward it; forwarding breaks the signature.</p>
-                  <input type="file" accept=".eml,message/rfc822" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block text-sm" />
-                  <Button variant="ghost" onClick={upload} disabled={!file || !consent}>Verify e-mail and start proving</Button>
-                </div>
-              </details>
-              {jobErr && <Alert kind="error">{jobErr}</Alert>}
-            </>
-          ) : (
-            <div className="space-y-3">
-              <ol className="space-y-1 text-sm">
-                {JOB_STEPS.map((s, i) => (
-                  <li key={s.key} className={`flex items-center gap-2 ${i < jobStep || job.status === "done" ? "text-ok" : i === jobStep ? "" : "text-muted"}`}>
-                    {i === jobStep && job.status !== "done" ? <Spinner /> : <span className="w-4 text-center">{i < jobStep || job.status === "done" ? "✓" : "·"}</span>}
-                    <span className="font-medium">{s.label}</span> <span className="text-xs text-muted">{s.help}</span>
-                  </li>
-                ))}
-              </ol>
-              {job.dekont && (
-                <p className="rounded-lg bg-panel-2 p-3 text-xs">
-                  Dekont: <b>{fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time}</b> · {job.dekont.fis_no} · {fmtTRY(job.dekont.amount_kurus)} → {job.dekont.recipient_name ?? "?"}{job.dekont.fast_sorgu_no ? ` · FAST ${job.dekont.fast_sorgu_no}` : ""}
-                </p>
-              )}
-              {job.status === "failed" && (
-                <Alert kind="error">
-                  Proof failed: {job.error}. <button className="underline" onClick={() => { localStorage.removeItem(`zkotc-job-r${r.id}`); setJob(null); }}>Try again</button>
-                </Alert>
-              )}
-              {job.cycles ? <p className="text-xs text-muted">{job.cycles.toLocaleString()} zkVM cycles</p> : null}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Step 4: claim */}
-      {job?.status === "done" && job.proof && job.public_values && (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold">4 · {bond ? "Claim the bond" : `Claim your ${t.symbol}`}</h3>
-          <p className="text-sm text-muted">The proof ({(job.proof.length - 2) / 2} bytes) is verified by the Soroban verifier contract inside the same transaction that pays you.</p>
-          {cfg && info && bytesToHex(cfg.image_id).toLowerCase() !== info.image_id.replace(/^0x/, "").toLowerCase() && (
-            <Alert kind="error">
-              The prover&apos;s guest image id ({info.image_id.slice(0, 10)}…) does not match the escrow configuration ({bytesToHex(cfg.image_id).slice(0, 8)}…); a claim with this
-              proof would fail on-chain. If the prover was updated, reload this page.
-            </Alert>
-          )}
-          <Button onClick={() => onClaim(job.public_values!, job.proof!)} disabled={!!busy}>
-            {busy ? <><Spinner /> Confirm in wallet…</> : `Claim ${prize}`}
-          </Button>
-        </section>
-      )}
+      {/* 4 · claim */}
+      <StepCard n={4} title={bond ? `Claim the bond: ${prize}` : `Claim your ${prize}`} state={s4}>
+        {proved && (
+          <>
+            <p className="text-sm text-muted">The proof ({(job!.proof!.length - 2) / 2} bytes) is verified by the Soroban verifier contract inside the same transaction that pays you.</p>
+            {cfg && info && bytesToHex(cfg.image_id).toLowerCase() !== info.image_id.replace(/^0x/, "").toLowerCase() && (
+              <Alert kind="error">The prover&apos;s guest image id does not match the escrow configuration; this proof would fail on-chain. If the prover was updated, reload this page.</Alert>
+            )}
+            <Button className="w-full sm:w-auto" onClick={() => onClaim(job!.public_values!, job!.proof!)} disabled={!!busy}>
+              {busy ? <><Spinner /> Confirm in wallet…</> : `Claim ${prize}`}
+            </Button>
+          </>
+        )}
+      </StepCard>
 
       {!bond && !paid && (
-        <div className="border-t border-line pt-3 text-xs text-muted">
-          Changed your mind and have <b>not</b> paid?{" "}
-          <button className="underline" onClick={onRelease} disabled={!!busy}>Release the reservation</button>. Not sure which ad to pick? <Link className="underline" href="/">Back to the market</Link>.
-        </div>
+        <p className="text-xs text-muted">
+          Changed your mind and have <b>not</b> paid? <button className="underline" onClick={onRelease} disabled={!!busy}>Release the reservation</button> · <Link className="underline" href="/">Back to the market</Link>
+        </p>
       )}
-    </Card>
+    </div>
   );
 }

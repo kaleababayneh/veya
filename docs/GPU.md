@@ -15,6 +15,18 @@ Two moving parts:
 `scripts/gpu/deploy.sh` (run on your Mac) ties them together. One-time: copy `scripts/gpu/.env.example` to
 `scripts/gpu/.env` and fill in `PROVER_TOKEN` (same value as `NEXT_PUBLIC_PROVER_TOKEN` in `web/.env.local`).
 
+## 0. The whole thing, next time
+
+```sh
+# 1. rent a 4090 on Vast (§1), copy its "Direct SSH" line, then from the repo root:
+scripts/gpu/deploy.sh "ssh -p <port> root@<ip> -L 8080:localhost:8080" --test zkotc-lib/testdata/private/<some>.eml
+# 2. that is all: prebuilt binaries (same image id as the escrow), HTTPS proxy re-pointed, web/.env.local updated,
+#    Vercel untouched (it talks to PROXY_URL, which never changes). ~4 min. Destroy the instance when done.
+```
+No `--switch` is needed as long as `bin/latest` on the artifact host is the build the escrow is configured for
+(`BUILD.txt` there names the image id; `deploy.sh` checks it against the escrow and says so). Nothing on a box
+needs saving before destroying it.
+
 ## 1. Rent (Vast.ai, ~2 min)
 
 1. Add credit first (the site will not create an instance at $0.00) and put your SSH public key on the **Keys**
@@ -50,15 +62,21 @@ What it does, in order (each step prints its elapsed time):
 5. prints the public URL: Vast maps container port `10100` to a public port (`VAST_TCP_PORT_10100`; ports 8080,
    8384, 6006 and 1111 belong to Vast's own portal, do not use them), and `GET /info` with the box's `image_id`,
 6. `--switch`: compares that image id with the escrow's `config.image_id`; if different, runs `set_config` on the
-   testnet escrow (all other fields unchanged) and writes `NEXT_PUBLIC_PROVER_URL` into `web/.env.local`
-   (restart `npm run dev`). Without `--switch` it only tells you they differ,
-7. `--test`: uploads the e-dekont through the API and prints the phase timings and the seal size.
+   testnet escrow (all other fields unchanged). Without `--switch` it only tells you they differ,
+7. re-points the HTTPS proxy: the web app (and Vercel) call `PROXY_URL` (`https://4-239-243-216.sslip.io/gpu`,
+   Caddy on the artifact host, `handle_path /gpu/*`), whose target is the box's public `ip:port`. `deploy.sh`
+   rewrites that line over ssh (`sudo sed` + `systemctl reload caddy`), then checks `PROXY_URL/info` returns the
+   box's image id, and writes `NEXT_PUBLIC_PROVER_URL=PROXY_URL` into `web/.env.local` if it is not already there
+   (`--no-proxy` skips this),
+8. `--test`: uploads the e-dekont through the API and prints the phase timings and the seal size.
 
 Expected output at the end:
 
 ```
 prover: http://98.191.113.12:11267
-info:   {"image_id":"0x3e55…","prover_mode":"groth16","dkim_source":"dns","public_values_len":152}
+info:   {"image_id":"0x89f97cff…","prover_mode":"groth16","dkim_source":"dns","public_values_len":184}
+escrow CAFU5GMK… already accepts this box's image id
+proxy ok: https://4-239-243-216.sslip.io/gpu/info answers with the box's image id
 job 8296cd79-…: queued
    2.1s proving
   15.0s done
@@ -73,9 +91,10 @@ whichever prover the app uses must be the one the escrow points at.
 
 ## 3. Use it
 
-- Web app: `NEXT_PUBLIC_PROVER_URL=http://<ip>:<port>` (`--switch` writes it). Plain HTTP is fine from
-  `http://localhost:3000`; from an HTTPS site you would need a TLS front (`cloudflared` is preinstalled on Vast
-  boxes: `cloudflared tunnel --url http://localhost:10100` gives a temporary HTTPS URL).
+- Web app: `NEXT_PUBLIC_PROVER_URL=https://4-239-243-216.sslip.io/gpu` (`PROXY_URL`; `deploy.sh` writes it) both
+  locally and on Vercel. The box's plain `http://<ip>:<port>` also works from `http://localhost:3000` (a browser
+  on an HTTPS page cannot call it). Without an artifact host: `cloudflared tunnel --url http://localhost:10100`
+  on the box gives a temporary HTTPS URL.
 - CLI on the box: `GROTH16_ICICLE_DIR=~/gpu-artifacts/icicle GROTH16_ZKEY_DIR=~/gpu-artifacts/zkey ~/zkotc/bin/zkotc prove --eml x.eml --iban TR… --name "AD SOYAD" --offer-id N --buyer G… --dns --out proof.json`
   (`--buyer` is the claiming wallet; the dekont's description must carry `zkotc reference --offer-id N --buyer G…`)
   (the CLI starts its own ICICLE worker, so add ~2 s; the server keeps one warm)
@@ -109,7 +128,10 @@ and it is bound to the server with `PR_SET_PDEATHSIG`, so a server crash cannot 
 
 Destroy the instance on Vast when done (a stopped instance still bills storage). Nothing on the box needs saving:
 the artifacts live on the artifact host, receipts in `~/zkotc/cache` are reproducible, and the uploaded e-mails
-only ever existed in the server's memory for the duration of a job.
+only ever existed in the server's memory for the duration of a job. If you built on the box, `--publish` first
+(check: `sha256sum ~/zkotc/bin/zkotc-server` on the box = `bin/latest/SHA256SUMS` on the artifact host).
+Until the next rental the live site's prover calls fail (the proxy points at a dead host); the market, reserving,
+revealing and declaring keep working since they do not touch the prover.
 
 Cost: 4090 at $0.36/h ≈ $0.003 per proof; the afternoon that produced this runbook cost about $1.
 
