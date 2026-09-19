@@ -2,7 +2,7 @@
 
 A peer-to-peer market like Binance P2P, minus the platform holding money or judging disputes. Makers post XLM or USDC
 liquidity with a TRY price in a Soroban escrow. A buyer reserves an amount, pays the maker by an ordinary **FAST** transfer
-from a **Ziraat** account, and asks the bank to e-mail the transfer's *e-dekont*. That e-mail is DKIM-signed by Ziraat; a
+from a **Ziraat** or **VakıfBank** account, and asks the bank to e-mail the transfer's receipt (*e-dekont*). That e-mail is DKIM-signed by the bank; a
 RISC Zero zkVM program verifies the signature and reads the receipt, a GPU wraps it into a Groth16 proof in about **15 s**,
 and the escrow pays out only when Stellar's RISC Zero verifier router accepts the proof. No oracle, no custodian, no
 screenshots: the evidence is the bank's own RSA signature, and a payment reference typed into the transfer binds it to the
@@ -33,7 +33,7 @@ buyer  ──settle(journal, seal) ───────────────
 | Path | What | Tests |
 |---|---|---|
 | `contracts/escrow` | Market escrow v5: ads, reservations, quotes, `declare_paid` protection, per-reservation bond slices, wallet-bound reference, nullifiers, admin/upgrade; calls the RISC Zero router | 21 |
-| `zkotc-lib` | zkVM-agnostic core: DKIM verifier (RFC 6376), MIME/attachment extraction, Ziraat e-dekont parser hardened against description injection, 184-byte journal | 16 unit + 7 on real e-mails |
+| `zkotc-lib` | zkVM-agnostic core: DKIM verifier (RFC 6376), MIME/attachment extraction, bank providers chosen by DKIM domain — Ziraat e-dekont HTML parser, VakıfBank Dekont.pdf extractor + parser — hardened against description injection, 184-byte journal | 16 unit + 10 on real e-mails |
 | `prover` | RISC Zero guest (`prover/IMAGE_ID`), `zkotc` CLI, `zkotc-server` (jobs API, GPU Groth16 via ICICLE or the reference CPU prover) | |
 | `web` | Next.js 16: market, ads, reservation wizard, `/api/reveal` (sealed IBAN → reserving wallet), `/api/prove` (gate to the prover) | lint + types + build in CI |
 | `scripts/gpu` | Rent-and-deploy runbook for the GPU prover (artifacts on an Azure host, HTTPS via Caddy, escrow switch) | |
@@ -152,7 +152,7 @@ The first iteration used SP1 with our own Soroban Groth16 verifier (verified a r
   upload (memory only), and change the accepted guest image id, DKIM key set or contract code with the admin key, with no delay.
   Every such change is a public transaction. Production plan: timelock on admin actions, reproducible guest build, multisig, and
   the reveal key inside an attested enclave (`docs/ROADMAP.md` §C).
-- **Other limits:** payers must bank with Ziraat; Ziraat's DKIM key is RSA-1024 (only the bank can forge, but it is a weak key by
+- **Other limits:** payers must bank with Ziraat or VakıfBank; both banks' DKIM keys are RSA-1024 (only the bank can forge, but weak by
   today's standards); the .eml must be downloaded from a computer (phones cannot export it); a proof after the 3-day bond window
   is not compensated; a buyer can delay a maker by the 2-hour protection window without paying.
 

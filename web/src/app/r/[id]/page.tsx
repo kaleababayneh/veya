@@ -304,6 +304,8 @@ function BuyerFlow({
   const { signMessage } = useWallet();
   const { t: tr } = useI18n();
   const [linkCopied, setLinkCopied] = useState(false);
+  const [bank, setBank] = useState<"ziraat" | "vakif">(() => { try { return localStorage.getItem("zkotc-bank") === "vakif" ? "vakif" : "ziraat"; } catch { return "ziraat"; } });
+  const pickBank = (b: "ziraat" | "vakif") => { setBank(b); try { localStorage.setItem("zkotc-bank", b); } catch { /* ignore */ } };
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(true);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -393,7 +395,7 @@ function BuyerFlow({
         {canPay && (
           <>
             <div className="overflow-hidden rounded-xl border border-line">
-              <div className="bg-panel-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">{tr("FAST transfer from your Ziraat account")}</div>
+              <div className="bg-panel-2 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">{tr("FAST transfer from your Ziraat or VakıfBank account")}</div>
               <dl className="divide-y divide-line text-sm">
                 {[
                   ["Alıcı IBAN", fmtIBAN(payee!.iban), payee!.iban.replace(/\s+/g, "")],
@@ -428,11 +430,23 @@ function BuyerFlow({
       </StepCard>
 
       {/* 3 · prove */}
-      <StepCard n={3} title={tr("Prove it from Ziraat's e-dekont e-mail")} state={s3} summary={job?.dekont ? <>Dekont {fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time} · {fmtTRY(job.dekont.amount_kurus)} · proof ready</> : undefined}>
+      <StepCard n={3} title={tr("Prove it from your bank's dekont e-mail")} state={s3} summary={job?.dekont ? <>Dekont {fmtYmd(job.dekont.date_yyyymmdd)} {job.dekont.time} · {fmtTRY(job.dekont.amount_kurus)} · proof ready</> : undefined}>
         {!job ? (
           <>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted">{tr("I paid from")}</span>
+              {(["ziraat", "vakif"] as const).map((b) => (
+                <button key={b} type="button" onClick={() => pickBank(b)} className={`rounded-lg border px-3 py-1 ${bank === b ? "border-accent bg-accent/10 font-medium" : "border-line text-muted hover:text-fg"}`}>
+                  {b === "ziraat" ? "Ziraat" : "VakıfBank"}
+                </button>
+              ))}
+            </div>
             <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
-              <li><b className="text-fg">Ziraat Mobil</b> → {tr("Hesap Hareketleri → the")} ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} {tr("transfer →")} <b className="text-fg">Dekont Gönder</b> → <b className="text-fg">E-posta</b>{tr(". The bank e-mails it to your registered address within a minute (subject \"e-dekont\").")}</li>
+              {bank === "ziraat" ? (
+                <li><b className="text-fg">Ziraat Mobil</b> → {tr("Hesap Hareketleri → the")} ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} {tr("transfer →")} <b className="text-fg">Dekont Gönder</b> → <b className="text-fg">E-posta</b>{tr(". The bank e-mails it to your registered address within a minute (subject \"e-dekont\").")}</li>
+              ) : (
+                <li><b className="text-fg">VakıfBank Mobil</b> → {tr("Hesap Hareketleri → the")} ₺{(Number(r.try_amount_kurus) / 100).toLocaleString("tr-TR")} {tr("transfer →")} <b className="text-fg">Dekont</b> → <b className="text-fg">E-posta</b>{tr(". The bank e-mails it to your registered address within a minute (subject \"Dekont\", attachment Dekont.pdf).")}</li>
+              )}
               <li>{tr("Open that e-mail in")} <b className="text-fg">{tr("Gmail on a computer")}</b> → ⋮ {tr("menu →")} <b className="text-fg">Show original</b> → <b className="text-fg">Download original</b>{tr(", and drop the file below. Do not forward it: forwarding breaks the bank's signature.")}</li>
             </ol>
             <label

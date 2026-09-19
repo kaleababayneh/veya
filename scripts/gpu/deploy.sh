@@ -118,7 +118,9 @@ else
   if [ "$SWITCH" = 1 ]; then
     step "escrow set_config --image_id $IMG (other fields unchanged)"
     # every set_config parameter (asked from the CLI, so this follows contract upgrades), current values, new image id
-    PARAMS=$(stellar contract invoke --id "$ESCROW_ID" --network testnet --source "$STELLAR_IDENTITY" -- set_config --help 2>/dev/null | grep -oE '^\s+--[a-z_]+' | tr -d ' -' | tr '\n' ' ')
+    # (the CLI prints the help and exits 1, which set -e would otherwise turn into a silent abort here)
+    PARAMS=$( (stellar contract invoke --id "$ESCROW_ID" --network testnet --source "$STELLAR_IDENTITY" -- set_config --help 2>/dev/null || true) | grep -oE '^\s+--[a-z_]+' | tr -d ' -' | tr '\n' ' ' || true)
+    [ -n "$PARAMS" ] || { echo "could not read set_config parameters from the contract"; exit 1; }
     printf '%s' "$ESC" | python3 -c '
 import json, sys
 c = json.load(sys.stdin); c["image_id"] = sys.argv[1][2:]

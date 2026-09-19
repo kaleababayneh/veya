@@ -1,4 +1,4 @@
-//! zkotc CLI (RISC Zero) — evidence: Ziraat e-dekont e-mail (.eml)
+//! zkotc CLI (RISC Zero) — evidence: a bank's DKIM-signed dekont e-mail (.eml): Ziraat (HTML) or VakıfBank (PDF)
 //!   zkotc image-id
 //!   zkotc execute --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --buyer G… [--min-kurus N] [--since YYYYMMDD] [--dns]
 //!   zkotc prove   --eml e-dekont.eml --iban TR.. --name "AD SOYAD" --offer-id 1 --buyer G… --out proof.json [--dns]
@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use zkotc_host::{build_input, execute, image_id_hex, prove_groth16, resolve_dkim_der, wrap_cached, ClaimJson, PINNED_DER};
 
 #[derive(Parser)]
-#[command(about = "RISC Zero zkEmail prover for Ziraat FAST payments")]
+#[command(about = "RISC Zero zkEmail prover for Turkish FAST payments (Ziraat, VakıfBank)")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,

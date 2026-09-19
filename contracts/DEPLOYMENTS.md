@@ -48,3 +48,7 @@ First real receipt verified on-chain via the router: https://stellar.expert/expl
 `ZKOTC 7 089340`, Ziraat prints the typed text in front of its own fields), proof 12.8 s on the GPU, settled 17:33 Istanbul.
 Guest image id switched to 64c9d9d7… for the typed-açıklama parser fix (commit e628033), then the escrow was upgraded in
 place (wasm 07be6c65…) for the single-token reference format; the guest is unchanged by that, so the image id stayed.
+
+**2026-09-12 — VakıfBank added as a second bank:** escrow upgraded in place (wasm 36a6d1fb9ef0eee8a352268b42cc48ecf44d46b391377d460399d4bfa0be69c8:
+`set_domains`/`domains`), extra domain aa9912ff… (`vakifbank.com.tr`) and DKIM key hash 019680d5… (`smtp2`) registered; guest image id switched to
+aa06027db8c3d4877dd43d5117c7408f11765cff75db3f618059e0cc13916e4b (tx 8a7b1e3b…; Vakıf PDF provider + Gmail Message-ID repair, commit fcf41a4).

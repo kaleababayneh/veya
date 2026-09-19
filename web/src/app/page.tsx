@@ -48,7 +48,7 @@ export default function Market() {
           <h1 className="text-4xl font-semibold tracking-tight">Buy XLM or USDC with a Turkish bank transfer. Peer to peer.</h1>
           <p className="mt-3 max-w-xl text-muted">
             Makers post ads with a price and their liquidity in a Soroban escrow. Pick an ad, reserve any amount within its limits, pay the maker by FAST,
-            and prove the payment from Ziraat&apos;s own e-dekont e-mail with a zero-knowledge proof. The escrow pays you out in about a minute.
+            and prove the payment from your bank&apos;s own signed receipt e-mail (Ziraat or VakıfBank) with a zero-knowledge proof. The escrow pays you out in about a minute.
           </p>
           <div className="mt-5 flex gap-3">
             <Link href="/sell">
@@ -73,7 +73,7 @@ export default function Market() {
             </a>
           )}
           <p className="mt-2 text-xs text-muted">
-            Testnet: fund a wallet at <a className="underline decoration-dotted" href="https://lab.stellar.org/account/fund?$=network$id=testnet" target="_blank" rel="noreferrer">Stellar Lab (Friendbot)</a>. Paying by FAST needs a Ziraat account; without one, browse the market and open a recent trade to see a settled proof.
+            Testnet: fund a wallet at <a className="underline decoration-dotted" href="https://lab.stellar.org/account/fund?$=network$id=testnet" target="_blank" rel="noreferrer">Stellar Lab (Friendbot)</a>. Paying by FAST needs a Ziraat or VakıfBank account; without one, browse the market and open a recent trade to see a settled proof.
           </p>
         </div>
       </section>

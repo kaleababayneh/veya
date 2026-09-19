@@ -15,12 +15,15 @@ const TR: Record<string, string> = {
   "The maker's bank details are encrypted on-chain. Sign a message with your wallet to reveal them — no transaction, no fee.":
     "Satıcının banka bilgileri zincir üzerinde şifreli. Görmek için cüzdanınızla bir mesaj imzalayın — işlem yok, ücret yok.",
   "✓ Verified against the maker's on-chain commitment.": "✓ Satıcının zincir üzerindeki taahhüdüyle doğrulandı.",
-  "FAST transfer from your Ziraat account": "Ziraat hesabınızdan FAST transferi",
+  "FAST transfer from your Ziraat or VakıfBank account": "Ziraat veya VakıfBank hesabınızdan FAST transferi",
+  "I paid from": "Ödediğim banka:",
+  "Prove it from your bank's dekont e-mail": "Bankanızın dekont e-postasıyla kanıtlayın",
+  ". The bank e-mails it to your registered address within a minute (subject \"Dekont\", attachment Dekont.pdf).":
+    ". Banka bir dakika içinde kayıtlı adresinize e-posta ile gönderir (konu \"Dekont\", ek Dekont.pdf).",
   "The Açıklama line is required: it ties the payment to your wallet, so nobody who obtains your e-mail can claim in your place.":
     "Açıklama satırı zorunludur: ödemeyi cüzdanınıza bağlar; e-postanızı ele geçiren biri sizin yerinize talepte bulunamaz.",
   "I have sent it — declare on-chain": "Gönderdim — zincirde beyan et",
   "Confirm in wallet…": "Cüzdanda onaylayın…",
-  "Prove it from Ziraat's e-dekont e-mail": "Ziraat e-dekont e-postasıyla kanıtlayın",
   "Drop the .eml file here, or click to choose it": ".eml dosyasını buraya bırakın ya da tıklayıp seçin",
   "Verify the e-mail and start proving": "E-postayı doğrula ve kanıtı başlat",
   "Your wallet will ask for a signature first (no transaction, no fee): it proves this reservation is yours before the prover spends GPU time.":
