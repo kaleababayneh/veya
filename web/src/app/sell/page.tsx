@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
 import { escrow, getConfig, payeeHashHex, send, unwrapResult, explainError, ERROR_HELP, type EscrowConfig } from "@/lib/escrow";
 import { sealPayee } from "@/lib/reveal";
+import { BANKS, bankFromIban } from "@/lib/banks";
+import { BankSelect } from "@/components/BankSelect";
 import { TOKENS } from "@/lib/tokens";
 import { fmtTRY, parseToken, parseTRY, nowSec, bytesToHex } from "@/lib/format";
 import { Alert, Button, Card, Field, inputCls, Spinner, TxLink, BackLink } from "@/components/ui";
@@ -18,6 +20,8 @@ export default function Sell() {
   const [minTry, setMinTry] = useState("");
   const [maxTry, setMaxTry] = useState("");
   const [iban, setIban] = useState("");
+  const [bankCode, setBankCode] = useState<string>("");
+  const ibanBank = bankFromIban(iban);
   const [name, setName] = useState("");
   const [nickname, setNickname] = useState("");
   const [days, setDays] = useState("30");
@@ -47,11 +51,14 @@ export default function Sell() {
     setErr(null);
     if (!address) return connect();
     if (!cfg) return setErr("Escrow configuration not loaded yet");
+    if (!bankCode) return setErr("Pick your bank");
+    if (!bankFromIban(iban)) return setErr("Enter a valid Turkish IBAN (TR + 24 digits) of a listed bank");
+    if (bankCode && ibanBank && ibanBank.code !== bankCode) return setErr(`This IBAN belongs to ${ibanBank.name}; pick that bank or correct the IBAN`);
     try {
       setBusy("Encrypting payee details…");
       const cleanIban = iban.replace(/\s+/g, "").toUpperCase();
       const cleanName = name.trim();
-      const [hashHex, blob] = await Promise.all([payeeHashHex(cleanIban, cleanName), sealPayee({ iban: cleanIban, name: cleanName }, bytesToHex(cfg.reveal_pubkey))]);
+      const [hashHex, blob] = await Promise.all([payeeHashHex(cleanIban, cleanName), sealPayee({ iban: cleanIban, name: cleanName, bank: BANKS.find((b) => b.code === bankCode)?.name }, bytesToHex(cfg.reveal_pubkey))]);
       setBusy("Confirm in wallet…");
       const c = escrow(address, signTransaction);
       const tx = await c.create_ad({
@@ -119,8 +126,28 @@ export default function Sell() {
         </Card>
         <Card className="space-y-4">
           <p className="text-sm font-semibold">Where buyers pay you</p>
-          <Field label="Your IBAN (any Turkish bank)" hint="Encrypted before it leaves your browser; stored on-chain only as ciphertext and a hash. Revealed to a buyer after they reserve.">
-            <input className={`${inputCls} mono`} value={iban} onChange={(e) => setIban(e.target.value)} placeholder="TR33 0006 1005 1978 6457 8413 26" required />
+          <Field label="Your bank" hint="Shown to a buyer together with your IBAN after they reserve. More banks open up as their receipts are supported.">
+            <BankSelect value={bankCode} onChange={setBankCode} />
+          </Field>
+          <Field
+            label="Your IBAN"
+            hint={
+              ibanBank && bankCode && ibanBank.code !== bankCode
+                ? `This IBAN belongs to ${ibanBank.name}, not ${BANKS.find((b) => b.code === bankCode)?.name}. Check the IBAN or the bank.`
+                : "Encrypted before it leaves your browser; stored on-chain only as ciphertext and a hash. Revealed to a buyer after they reserve."
+            }
+          >
+            <input
+              className={`${inputCls} mono ${ibanBank && bankCode && ibanBank.code !== bankCode ? "border-danger" : ""}`}
+              value={iban}
+              onChange={(e) => {
+                setIban(e.target.value);
+                const b = bankFromIban(e.target.value);
+                if (b && b.supported && !bankCode) setBankCode(b.code);
+              }}
+              placeholder="TR33 0006 1005 1978 6457 8413 26"
+              required
+            />
           </Field>
           <Field label="Account holder name" hint="Exactly as your bank shows it — the proof checks it (upper/lower case and Turkish letters do not matter).">
             <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="AYŞE YILMAZ" required maxLength={64} />

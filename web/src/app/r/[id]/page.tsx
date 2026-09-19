@@ -13,6 +13,8 @@ import { config } from "@/lib/config";
 import { Alert, BackLink, Button, Card, ReservationBadge, Skeleton, Spinner, TxLink } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { useI18n } from "@/lib/i18n";
+import { bankByName } from "@/lib/banks";
+import { BankLogo } from "@/components/BankSelect";
 import { Countdown } from "@/components/Countdown";
 
 export default function ReservationPage() {
@@ -375,7 +377,7 @@ function BuyerFlow({
       {!bond && expired && !paid && <Alert kind="warn">Your reservation timer ended. You can still settle as long as nobody releases it, so finish quickly, or release it and reserve again.</Alert>}
 
       {/* 1 · reveal */}
-      <StepCard n={1} title={tr(bond ? "Where you paid" : "Where to pay")} state={s1} summary={payee ? <>{payee.name} · <span className="mono">{fmtIBAN(payee.iban)}</span></> : undefined}>
+      <StepCard n={1} title={tr(bond ? "Where you paid" : "Where to pay")} state={s1} summary={payee ? <span className="inline-flex flex-wrap items-center gap-2">{payee.name}{bankByName(payee.bank) && <span className="inline-flex items-center gap-1"><BankLogo bank={bankByName(payee.bank)!} size={18} />{payee.bank}</span>}<span className="mono">{fmtIBAN(payee.iban)}</span></span> : undefined}>
         {!payee ? (
           <>
             <p className="text-sm text-muted">{tr("The maker's bank details are encrypted on-chain. Sign a message with your wallet to reveal them — no transaction, no fee.")}</p>
@@ -400,6 +402,7 @@ function BuyerFlow({
                 {[
                   ["Alıcı IBAN", fmtIBAN(payee!.iban), payee!.iban.replace(/\s+/g, "")],
                   ["Alıcı adı", payee!.name, payee!.name],
+                  ...(payee!.bank ? [["Alıcı banka", payee!.bank, payee!.bank]] : []),
                   ["Tutar", fmtTRY(r.try_amount_kurus), (Number(r.try_amount_kurus) / 100).toFixed(2).replace(".", ",")],
                   ["Açıklama", reference, reference],
                 ].map(([k, v, c]) => (

@@ -59,7 +59,7 @@ export async function POST(req: Request) {
   await sodium.ready;
   const sk = sodium.from_hex(secretHex.replace(/^0x/, ""));
   const pk = sodium.crypto_scalarmult_base(sk);
-  let payee: { iban: string; name: string };
+  let payee: { iban: string; name: string; bank?: string };
   try {
     const plain = sodium.crypto_box_seal_open(new Uint8Array(ad.payee_blob), pk, sk);
     payee = JSON.parse(Buffer.from(plain).toString("utf8"));
@@ -73,5 +73,5 @@ export async function POST(req: Request) {
   } catch {
     verified = false;
   }
-  return NextResponse.json({ iban: payee.iban, name: payee.name, verified });
+  return NextResponse.json({ iban: payee.iban, name: payee.name, bank: payee.bank ?? null, verified });
 }

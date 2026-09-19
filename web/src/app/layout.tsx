@@ -19,9 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <WalletProvider>
               <Nav />
               <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-              <footer className="mx-auto max-w-5xl px-4 py-10 text-xs text-muted">
-                Stellar testnet · Soroban BN254 verifier · RISC Zero zkEmail proofs · Built for Stellar Pro Hackathon, Istanbul 2026.
-              </footer>
+              <footer className="py-10" />
             </WalletProvider>
           </ToastProvider>
         </I18nProvider>

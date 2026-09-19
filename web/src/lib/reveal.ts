@@ -6,7 +6,7 @@
  */
 import sodium from "libsodium-wrappers";
 
-export type Payee = { iban: string; name: string };
+export type Payee = { iban: string; name: string; bank?: string };
 export type Revealed = Payee & { verified: boolean };
 
 export async function sealPayee(payee: Payee, revealPubkeyHex: string): Promise<Uint8Array> {
