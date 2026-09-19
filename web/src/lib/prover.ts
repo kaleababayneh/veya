@@ -54,7 +54,7 @@ export async function createJob(args: {
 }): Promise<ProverJob> {
   const res = await fetch(`${config.proverUrl}/jobs`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(config.proverToken ? { "x-prover-token": config.proverToken } : {}) },
     body: JSON.stringify({
       eml_base64: args.emlBase64,
       offer_id: Number(args.offerId),

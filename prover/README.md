@@ -15,5 +15,16 @@ RISC0_DEV_MODE=1 ./target/release/zkotc prove --eml my.eml --iban TR... --offer-
 rzup install risc0-groth16 && ./target/release/zkotc prove ...                  # real Groth16 receipt (x86_64)
 PORT=8787 [DKIM_DNS=1] ./target/release/zkotc-server
 ```
-The escrow expects receipts from risc0 3.0.x (control root pinned in the deployed verifier). Changing the guest changes
+Image ids are only reproducible across machines with `RISC0_USE_DOCKER=1`; the escrow must use the id of the
+host that proves (see `docs/OPERATIONS.md`). The escrow expects receipts from risc0 3.0.x (control root pinned in the deployed verifier). Changing the guest changes
 `image_id`; update the escrow with `set_config`.
+
+## Profiling
+```sh
+go install github.com/google/pprof@latest
+RISC0_PPROF_OUT=/tmp/zkotc.pprof ./target/release/zkotc execute --eml my.eml --iban TR... --offer-id 1
+pprof -top -nodecount=30 /tmp/zkotc.pprof
+```
+Reading the e-mail via `env::read::<Vec<u8>>()` cost ~20M of 34M cycles (serde deserializes byte by byte); the
+`u32 length + read_slice` protocol brought a real statement down to ~13.4M cycles. Remaining cost is mostly
+MIME/statement string handling and base64 (~7M) and DKIM (~3M, RSA/SHA-256 accelerated).

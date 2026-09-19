@@ -5,11 +5,12 @@
 //!   GET  /info   {image_id, prover_mode, dkim_source, public_values_len}
 //!   GET  /health
 //!
-//! Env: RISC0_DEV_MODE=1 (fake receipts, dev only), PORT (8787), DKIM_DNS=1, CORS_ORIGIN.
+//! Env: RISC0_DEV_MODE=1 (fake receipts, dev only), PORT (8787), DKIM_DNS=1, CORS_ORIGIN,
+//!      PROVER_TOKEN (if set, `POST /jobs` requires header `x-prover-token`), MAX_JOBS_QUEUED (default 8).
 //! The e-mail is held in memory only for the duration of the job; bodies are never logged.
 use axum::{
-    extract::{Path, State},
-    http::{HeaderValue, Method, StatusCode},
+    extract::{DefaultBodyLimit, Path, State},
+    http::{HeaderMap, HeaderValue, Method, StatusCode},
     routing::{get, post},
     Json, Router,
 };
@@ -87,6 +88,8 @@ struct AppState {
     jobs: Jobs,
     tx: Mutex<mpsc::Sender<(String, ProverInput)>>,
     dkim_dns: bool,
+    token: Option<String>,
+    max_queued: usize,
 }
 
 fn now() -> u64 {
@@ -142,9 +145,17 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    let state = Arc::new(AppState { jobs: jobs.clone(), tx: Mutex::new(tx), dkim_dns });
+    let token = std::env::var("PROVER_TOKEN").ok().filter(|t| !t.is_empty());
+    let max_queued = std::env::var("MAX_JOBS_QUEUED").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+    if token.is_none() {
+        tracing::warn!("PROVER_TOKEN not set: POST /jobs is open to anyone");
+    }
+    let state = Arc::new(AppState { jobs: jobs.clone(), tx: Mutex::new(tx), dkim_dns, token, max_queued });
     let cors = match std::env::var("CORS_ORIGIN") {
-        Ok(o) if o != "*" => CorsLayer::new().allow_origin(o.parse::<HeaderValue>()?).allow_methods([Method::GET, Method::POST]).allow_headers(Any),
+        Ok(o) if o != "*" => CorsLayer::new()
+            .allow_origin(o.split(',').map(|x| x.trim().parse::<HeaderValue>()).collect::<Result<Vec<_>, _>>()?)
+            .allow_methods([Method::GET, Method::POST])
+            .allow_headers(Any),
         _ => CorsLayer::new().allow_origin(Any).allow_methods([Method::GET, Method::POST]).allow_headers(Any),
     };
     let app = Router::new()
@@ -152,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/info", get(info))
         .route("/jobs", post(create_job))
         .route("/jobs/{id}", get(get_job))
+        .layer(DefaultBodyLimit::max(6 * 1024 * 1024))
         .layer(cors)
         .with_state(state);
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8787);
@@ -170,8 +182,22 @@ async fn info(State(st): State<Arc<AppState>>) -> Json<Info> {
     })
 }
 
-async fn create_job(State(st): State<Arc<AppState>>, Json(req): Json<NewJob>) -> Result<(StatusCode, Json<Job>), (StatusCode, Json<serde_json::Value>)> {
+async fn create_job(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<NewJob>,
+) -> Result<(StatusCode, Json<Job>), (StatusCode, Json<serde_json::Value>)> {
     let bad = |m: String| (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": m })));
+    if let Some(expected) = &st.token {
+        let given = headers.get("x-prover-token").and_then(|v| v.to_str().ok()).unwrap_or("");
+        if given != expected {
+            return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "missing or invalid x-prover-token" }))));
+        }
+    }
+    let queued = st.jobs.lock().unwrap().values().filter(|j| matches!(j.status, JobStatus::Queued | JobStatus::Executing | JobStatus::Proving)).count();
+    if queued >= st.max_queued {
+        return Err((StatusCode::TOO_MANY_REQUESTS, Json(serde_json::json!({ "error": format!("prover busy: {queued} jobs in progress, try again later") }))));
+    }
     let eml = base64::engine::general_purpose::STANDARD.decode(req.eml_base64.trim()).map_err(|e| bad(format!("eml_base64: {e}")))?;
     if eml.len() > 2 * 1024 * 1024 {
         return Err(bad("e-mail larger than 2 MiB".into()));

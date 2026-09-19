@@ -68,9 +68,21 @@ pub struct Executed {
     pub total_cycles: u64,
 }
 
+/// Guest input protocol: `u32` length + raw bytes (`write_slice`) for each blob, then serde for
+/// the two scalars. Must match `methods/guest/src/main.rs`.
+pub fn executor_env(input: &ProverInput) -> Result<ExecutorEnv<'static>> {
+    Ok(ExecutorEnv::builder()
+        .write(&(input.eml.len() as u32))?
+        .write_slice(&input.eml)
+        .write(&(input.dkim_pubkey_der.len() as u32))?
+        .write_slice(&input.dkim_pubkey_der)
+        .write(&(input.row_index, input.offer_id))?
+        .build()?)
+}
+
 /// Run the guest in the executor only (no proof). Works on any machine.
 pub fn execute(input: &ProverInput) -> Result<Executed> {
-    let env = ExecutorEnv::builder().write(input)?.build()?;
+    let env = executor_env(input)?;
     let session = default_executor().execute(env, ZKOTC_GUEST_ELF)?;
     let journal = session.journal.bytes.clone();
     let claim = PaymentClaim::from_bytes(&journal).ok_or(anyhow!("journal is not 152 bytes"))?;
@@ -80,7 +92,7 @@ pub fn execute(input: &ProverInput) -> Result<Executed> {
 
 /// Prove with Groth16 (x86 + `rzup install risc0-groth16`, or `RISC0_DEV_MODE=1` for a fake receipt).
 pub fn prove_groth16(input: &ProverInput) -> Result<ProofBundle> {
-    let env = ExecutorEnv::builder().write(input)?.build()?;
+    let env = executor_env(input)?;
     let info = default_prover().prove_with_opts(env, ZKOTC_GUEST_ELF, &ProverOpts::groth16())?;
     let receipt = info.receipt;
     receipt.verify(ZKOTC_GUEST_ID).context("receipt verification")?;
