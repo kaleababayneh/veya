@@ -26,6 +26,9 @@ pub struct ProverInput {
     /// DER SubjectPublicKeyInfo of the DKIM key (what the DNS `p=` tag base64-encodes)
     pub dkim_pubkey_der: Vec<u8>,
     pub offer_id: u64,
+    /// where the e-dekont attachment sits in the body: computed by the host (`locate_dekont`), verified
+    /// by the guest, so the guest never scans the body. `None` = scan (slow path, host tools).
+    pub attachment: Option<mime::AttachmentHint>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaymentClaim {
@@ -120,8 +123,13 @@ pub fn prove_payment(input: &ProverInput) -> Result<PaymentClaim, Error> {
         });
     }
 
-    let attachment = mime::extract_html_attachment(&verified.headers, &verified.body, DEKONT_ATTACHMENT_PREFIX)
-        .map_err(Error::Mime)?;
+    let hint = match input.attachment {
+        Some(h) => h,
+        None => mime::locate_attachment(&verified.headers, verified.body, DEKONT_ATTACHMENT_PREFIX)
+            .ok_or_else(|| Error::Mime(format!("no {DEKONT_ATTACHMENT_PREFIX}*.html attachment found")))?,
+    };
+    let payload = mime::attachment_at(&verified.headers, verified.body, hint, DEKONT_ATTACHMENT_PREFIX).map_err(Error::Mime)?;
+    let attachment = mime::decode_base64_mime(payload).map_err(Error::Mime)?;
     let d = dekont::parse(&attachment).map_err(Error::Dekont)?;
     if d.direction != dekont::Direction::Outgoing {
         return Err(Error::NotOutgoing);
@@ -159,8 +167,17 @@ fn nullifier(domain_hash: &[u8; 32], d: &dekont::Dekont) -> [u8; 32] {
 /// Host-side helper (not run in the guest): parse the dekont without DKIM verification so the
 /// prover service can validate direction, payee and amount before queueing a proof.
 pub fn inspect_dekont(eml: &[u8]) -> Result<dekont::Dekont, Error> {
+    locate_dekont(eml).map(|(d, _)| d)
+}
+
+/// Host helper: parse the dekont (no DKIM check) and locate its attachment for `ProverInput::attachment`.
+/// `eml` must be CRLF-normalized (`dkim::normalized`) — the offsets refer to those bytes.
+pub fn locate_dekont(eml: &[u8]) -> Result<(dekont::Dekont, mime::AttachmentHint), Error> {
     let (headers, body) = dkim::split_message(eml);
-    let headers = dkim::parse_headers(&headers);
-    let attachment = mime::extract_html_attachment(&headers, &body, DEKONT_ATTACHMENT_PREFIX).map_err(Error::Mime)?;
-    dekont::parse(&attachment).map_err(Error::Dekont)
+    let headers = dkim::parse_headers(headers);
+    let hint = mime::locate_attachment(&headers, body, DEKONT_ATTACHMENT_PREFIX)
+        .ok_or_else(|| Error::Mime(format!("no {DEKONT_ATTACHMENT_PREFIX}*.html attachment found")))?;
+    let payload = mime::attachment_at(&headers, body, hint, DEKONT_ATTACHMENT_PREFIX).map_err(Error::Mime)?;
+    let html = mime::decode_base64_mime(payload).map_err(Error::Mime)?;
+    Ok((dekont::parse(&html).map_err(Error::Dekont)?, hint))
 }

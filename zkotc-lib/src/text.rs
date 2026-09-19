@@ -1,4 +1,5 @@
 //! Small text utilities shared by the parsers (Turkish number/date formats, IBAN search, HTML text).
+//! Everything here runs inside the zkVM guest, so it is written as single passes over bytes.
 
 /// `dd.mm.yyyy` or `dd/mm/yyyy` -> yyyymmdd
 pub fn parse_date_dmy(s: &str) -> Option<u64> {
@@ -63,33 +64,92 @@ pub fn find_ibans(s: &str) -> Vec<String> {
     out
 }
 
-pub fn strip_tags(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut in_tag = false;
-    for c in s.chars() {
-        match c {
-            '<' => in_tag = true,
-            '>' => {
-                in_tag = false;
-                out.push(' ');
-            }
-            _ if !in_tag => out.push(c),
-            _ => {}
-        }
+/// First occurrence of `needle` in `hay`. A first-byte filter plus a slice compare; `str::find`'s
+/// two-way searcher and `windows().position()` both cost several times more per byte in the zkVM.
+pub fn find_bytes(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    let n = needle.len();
+    if n == 0 {
+        return Some(0);
     }
-    out
+    if hay.len() < n {
+        return None;
+    }
+    let first = needle[0];
+    let last_start = hay.len() - n;
+    let mut i = 0;
+    while i <= last_start {
+        if hay[i] == first && &hay[i..i + n] == needle {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
-/// Tags removed, common entities decoded, whitespace collapsed.
+/// Tags removed, common entities decoded, whitespace (incl. NBSP) collapsed to single spaces, trimmed.
+/// One pass, one allocation.
 pub fn clean_html_text(s: &str) -> String {
-    let s = strip_tags(s)
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&nbsp;", " ");
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    let b = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(b.len());
+    let mut in_tag = false;
+    let mut pending_space = false;
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if in_tag {
+            if c == b'>' {
+                in_tag = false;
+                pending_space = true;
+            }
+            i += 1;
+            continue;
+        }
+        let (emit, adv): (&[u8], usize) = match c {
+            b'<' => {
+                in_tag = true;
+                (b"", 1)
+            }
+            b'&' => {
+                let rest = &b[i..];
+                if rest.starts_with(b"&amp;") {
+                    (b"&", 5)
+                } else if rest.starts_with(b"&lt;") {
+                    (b"<", 4)
+                } else if rest.starts_with(b"&gt;") {
+                    (b">", 4)
+                } else if rest.starts_with(b"&quot;") {
+                    (b"\"", 6)
+                } else if rest.starts_with(b"&#39;") {
+                    (b"'", 5)
+                } else if rest.starts_with(b"&nbsp;") {
+                    pending_space = true;
+                    (b"", 6)
+                } else {
+                    (b"&", 1)
+                }
+            }
+            b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c => {
+                pending_space = true;
+                (b"", 1)
+            }
+            0xC2 if b.get(i + 1) == Some(&0xA0) => {
+                // U+00A0 no-break space
+                pending_space = true;
+                (b"", 2)
+            }
+            _ => (&b[i..i + 1], 1),
+        };
+        if !emit.is_empty() {
+            if pending_space && !out.is_empty() {
+                out.push(b' ');
+            }
+            pending_space = false;
+            out.extend_from_slice(emit);
+        }
+        i += adv;
+    }
+    // only ASCII bytes were interpreted; multi-byte UTF-8 sequences were copied whole
+    String::from_utf8(out).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -112,5 +172,22 @@ mod tests {
         assert_eq!(find_iban("IBAN : TR33 0006 1005 1978 6457 8413 26"), Some("TR330006100519786457841326".into()));
         assert_eq!(find_iban("TRY 12"), None);
         assert_eq!(find_ibans("a TR120000000000000000000001 b TR120000000000000000000001 c TR330006100519786457841326").len(), 2);
+    }
+
+    #[test]
+    fn find_bytes_basic() {
+        assert_eq!(find_bytes(b"hello world", b"world"), Some(6));
+        assert_eq!(find_bytes(b"hello", b""), Some(0));
+        assert_eq!(find_bytes(b"hello", b"hello!"), None);
+        assert_eq!(find_bytes(b"aaab", b"ab"), Some(2));
+        assert_eq!(find_bytes(b"<tr><td>x</td></tr>", b"</tr>"), Some(14));
+    }
+
+    #[test]
+    fn clean_html() {
+        assert_eq!(clean_html_text("  <td style='x'>İşlem&nbsp;Tutarı</td> :  <b>1.681,50</b> TRY\r\n"), "İşlem Tutarı : 1.681,50 TRY");
+        assert_eq!(clean_html_text("a<BR>b &amp; c &lt;d&gt; &quot;e&#39; \u{a0}f"), "a b & c <d> \"e' f");
+        assert_eq!(clean_html_text("<p></p>"), "");
+        assert_eq!(clean_html_text("Çekilmiştir.  08/09/2026"), "Çekilmiştir. 08/09/2026");
     }
 }

@@ -8,6 +8,7 @@
 //! Env: RISC0_DEV_MODE=1 (fake receipts, dev only), PORT (8787), DKIM_DNS=1, CORS_ORIGIN,
 //!      PROVER_TOKEN (if set, `POST /jobs` requires header `x-prover-token`), MAX_JOBS_QUEUED (default 8),
 //!      SUCCINCT_CACHE_DIR (keep STARK receipts so a failed Groth16 wrap can be retried with `zkotc wrap`),
+//!      GROTH16_ICICLE_DIR + GROTH16_ZKEY_DIR (GPU hosts: ICICLE-snark GPU Groth16 worker, ~5 s wrap) or
 //!      GROTH16_NATIVE_DIR (GPU hosts: reference CPU Groth16 prover unpacked from the risc0 docker image; no Docker).
 //! The e-mail is held in memory only for the duration of the job; bodies are never logged.
 use axum::{
@@ -117,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
     {
         let jobs = jobs.clone();
         std::thread::spawn(move || {
-            tracing::info!(image_id = %image_id_hex(), dev_mode = dev_mode(), groth16 = %zkotc_host::native_groth16_dir().map(|d| format!("native:{}", d.display())).unwrap_or("default".into()), "prover ready");
+            tracing::info!(image_id = %image_id_hex(), dev_mode = dev_mode(), groth16 = %zkotc_host::groth16_engine(), "prover ready");
             for (id, input) in rx {
                 let set = |st: JobStatus, f: &dyn Fn(&mut Job)| {
                     if let Some(j) = jobs.lock().unwrap().get_mut(&id) {

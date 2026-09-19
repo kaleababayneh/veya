@@ -15,6 +15,7 @@ fn sample(prefix: &str) -> Option<Vec<u8>> {
         .filter_map(|e| e.ok())
         .find(|e| e.file_name().to_string_lossy().starts_with(prefix))
         .and_then(|e| std::fs::read(e.path()).ok())
+        .map(|eml| dkim::normalized(&eml).into_owned()) // the host does this before proving
 }
 
 #[test]
@@ -25,7 +26,7 @@ fn outgoing_dekont_proves() {
     assert!(d.fast_sorgu_no().is_some(), "Fast Sorgu No");
     assert!(d.recipient_name().is_some() && d.recipient_bank_code().is_some() && d.recipient_iban_masked().is_some());
     println!("dekont: {} {} {} amount {} debited {} bank {:?} payee {:?}", d.date_yyyymmdd, d.time, d.fis_no, d.amount_kurus, d.debited_kurus, d.recipient_bank_code(), d.recipient_name());
-    let claim = prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 9 }).expect("prove_payment");
+    let claim = prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 9, attachment: None }).expect("prove_payment");
     assert_eq!(claim.amount_kurus, d.amount_kurus);
     assert_eq!(claim.date_yyyymmdd, d.date_yyyymmdd);
     assert_eq!(claim.payee_hash, d.payee_hash().unwrap());
@@ -38,7 +39,7 @@ fn incoming_dekont_is_rejected() {
     let Some(eml) = sample("e-dekont-incoming") else { return };
     let d = inspect_dekont(&eml).expect("dekont");
     assert_eq!(d.direction, dekont::Direction::Incoming);
-    assert_eq!(prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 1 }).unwrap_err(), Error::NotOutgoing);
+    assert_eq!(prove_payment(&ProverInput { eml, dkim_pubkey_der: der(), offer_id: 1, attachment: None }).unwrap_err(), Error::NotOutgoing);
 }
 
 #[test]

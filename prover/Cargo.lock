@@ -7142,10 +7142,12 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bincode",
+ "circom-witnesscalc",
  "clap",
  "dotenvy",
  "hex",
  "hickory-resolver",
+ "libc",
  "methods",
  "risc0-ethereum-contracts",
  "risc0-groth16",
@@ -7165,7 +7167,6 @@ dependencies = [
 name = "zkotc-lib"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "rsa",
  "serde",
  "sha2",

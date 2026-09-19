@@ -21,3 +21,6 @@ zkpdf-template/
 vendor/
 zkotc-lib/target/
 prover/build.log
+# GPU deploy settings (token, test payee)
+scripts/gpu/.env
+proof-*.json

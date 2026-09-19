@@ -71,12 +71,18 @@ pub struct Executed {
 /// Guest input protocol: `u32` length + raw bytes (`write_slice`) for each blob, then serde for
 /// the two scalars. Must match `methods/guest/src/main.rs`.
 pub fn executor_env(input: &ProverInput) -> Result<ExecutorEnv<'static>> {
-    Ok(ExecutorEnv::builder()
+    let mut b = ExecutorEnv::builder();
+    // segment size (log2 cycles; risc0 default 20). Larger segments = fewer lift/join steps on a big GPU.
+    if let Some(po2) = std::env::var("ZKOTC_SEGMENT_PO2").ok().and_then(|v| v.parse::<usize>().ok()) {
+        b.segment_limit_po2(po2 as u32);
+    }
+    Ok(b
         .write(&(input.eml.len() as u32))?
         .write_slice(&input.eml)
         .write(&(input.dkim_pubkey_der.len() as u32))?
         .write_slice(&input.dkim_pubkey_der)
         .write(&input.offer_id)?
+        .write(&input.attachment)?
         .build()?)
 }
 
@@ -104,7 +110,9 @@ pub fn prove_groth16(input: &ProverInput, succinct_cache: Option<&std::path::Pat
         }
         None => {
             let env = executor_env(input)?;
+            let t = std::time::Instant::now();
             let info = prover.prove_with_opts(env, ZKOTC_GUEST_ELF, &ProverOpts::succinct())?;
+            tracing::info!("stark+succinct: {:.1}s ({} segments, {} cycles)", t.elapsed().as_secs_f64(), info.stats.segments, info.stats.total_cycles);
             if let Some(path) = succinct_cache {
                 std::fs::write(path, bincode::serialize(&info.receipt)?)?;
             }
@@ -121,10 +129,16 @@ pub fn prove_groth16(input: &ProverInput, succinct_cache: Option<&std::path::Pat
 ///   Needs the `native-groth16` feature (implied by `cuda`). This is the engine for GPU hosts: the
 ///   CUDA Groth16 wrap in risc0 3.0.x crashes / miscomputes (risc0/risc0#3785, #3760).
 /// * otherwise `default_prover().compress` (Docker on a CPU host).
+/// * `GROTH16_ICICLE_DIR=<dir>`: GPU Groth16 with Ingonyama's ICICLE-snark (MIT) kept alive as a worker
+///   process (`<dir>/icicle-snark`, its `libicicle_*.so` and `backend/cuda/*.so`); the circom witness
+///   is computed in-process from `GROTH16_ZKEY_DIR/stark_verify_graph.bin` and the proof from
+///   `GROTH16_ZKEY_DIR/stark_verify_final.zkey` (the `rzup` `risc0-groth16` component files).
+///   identity_p254 0.3 s + witness ~2 s + proof ~2.4 s on an RTX 4090. Takes precedence.
 pub fn wrap_groth16(succinct: &Receipt) -> Result<Receipt> {
-    let receipt = match native_groth16_dir() {
-        Some(dir) => wrap_groth16_native(succinct, &dir)?,
-        None => default_prover().compress(&ProverOpts::groth16(), succinct).context("groth16 wrap")?,
+    let receipt = match (env_dir("GROTH16_ICICLE_DIR"), native_groth16_dir()) {
+        (Some(dir), _) => wrap_groth16_icicle(succinct, &dir)?,
+        (None, Some(dir)) => wrap_groth16_native(succinct, &dir)?,
+        (None, None) => default_prover().compress(&ProverOpts::groth16(), succinct).context("groth16 wrap")?,
     };
     receipt.verify(ZKOTC_GUEST_ID).context("receipt verification")?;
     Ok(receipt)
@@ -132,18 +146,217 @@ pub fn wrap_groth16(succinct: &Receipt) -> Result<Receipt> {
 
 /// `GROTH16_NATIVE_DIR`, if set.
 pub fn native_groth16_dir() -> Option<std::path::PathBuf> {
-    std::env::var_os("GROTH16_NATIVE_DIR").filter(|v| !v.is_empty()).map(std::path::PathBuf::from)
+    env_dir("GROTH16_NATIVE_DIR")
+}
+
+fn env_dir(name: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os(name).filter(|v| !v.is_empty()).map(std::path::PathBuf::from)
+}
+
+/// Human-readable engine name for logs and `/info`.
+pub fn groth16_engine() -> String {
+    match (env_dir("GROTH16_ICICLE_DIR"), native_groth16_dir()) {
+        (Some(d), _) => format!("icicle-gpu:{}", d.display()),
+        (None, Some(d)) => format!("native-cpu:{}", d.display()),
+        (None, None) => "default".into(),
+    }
+}
+
+/// Scratch dir for wrap files: RAM-backed `/dev/shm` when present (the witness is 180 MB), else the temp dir.
+#[cfg(feature = "native-groth16")]
+fn groth16_work_dir() -> Result<(std::path::PathBuf, bool)> {
+    if let Some(keep) = env_dir("ZKOTC_GROTH16_WORK_DIR") {
+        std::fs::create_dir_all(&keep)?;
+        return Ok((keep, true));
+    }
+    let base = std::path::Path::new("/dev/shm");
+    let base = if base.is_dir() { base.to_path_buf() } else { std::env::temp_dir() };
+    let work = base.join(format!("zkotc-groth16-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&work)?;
+    Ok((work, false))
+}
+
+/// Groth16 receipt from a snarkjs-style `proof.json` (what both the reference prover and ICICLE write).
+#[cfg(feature = "native-groth16")]
+fn receipt_from_proof_json(succinct: &Receipt, proof_path: &std::path::Path) -> Result<Receipt> {
+    use risc0_groth16::{ProofJson, Seal};
+    use risc0_zkvm::{sha::Digestible, Groth16Receipt, Groth16ReceiptVerifierParameters, InnerReceipt};
+    let inner = succinct.inner.succinct().map_err(|e| anyhow!("not a succinct receipt: {e:?}"))?;
+    let proof: ProofJson = serde_json::from_str(&std::fs::read_to_string(proof_path)?)?;
+    let seal: Seal = proof.try_into()?;
+    let g16 = Groth16Receipt::new(seal.to_vec(), inner.claim.clone(), Groth16ReceiptVerifierParameters::default().digest());
+    Ok(Receipt::new(InnerReceipt::Groth16(g16), succinct.journal.bytes.clone()))
+}
+
+/// identity_p254 on the prover's device → the circom input JSON for the `stark_verify` circuit.
+#[cfg(feature = "native-groth16")]
+fn identity_p254_input_json(succinct: &Receipt) -> Result<String> {
+    use risc0_zkvm::recursion::identity_p254;
+    let inner = succinct.inner.succinct().map_err(|e| anyhow!("not a succinct receipt: {e:?}"))?;
+    let t = std::time::Instant::now();
+    let ident = identity_p254(inner).context("identity_p254")?;
+    tracing::info!("identity_p254: {:.1}s", t.elapsed().as_secs_f64());
+    risc0_groth16::prove::to_json(&ident.get_seal_bytes())
+}
+
+#[cfg(feature = "native-groth16")]
+mod icicle {
+    //! A long-lived `icicle-snark` CLI worker: it parses the 3.6 GB zkey once and keeps it cached on the GPU
+    //! (~8 GB VRAM, <1 GB RAM), so a proof costs ~2.4 s instead of ~4 s. Protocol: one `prove …` line on stdin,
+    //! then stdout lines until `COMMAND_COMPLETED`. If the worker dies mid-proof it is respawned next time.
+    //! Note: the upstream CLI busy-loops on EOF, so it is stopped with `exit` and dies with us (PDEATHSIG).
+    use anyhow::{anyhow, Context, Result};
+    use std::io::{BufRead, BufReader, Write};
+    use std::path::Path;
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+    use std::sync::{Mutex, OnceLock};
+
+    pub struct Worker {
+        child: Child,
+        stdin: ChildStdin,
+        stdout: BufReader<ChildStdout>,
+    }
+
+    impl Drop for Worker {
+        fn drop(&mut self) {
+            let _ = writeln!(self.stdin, "exit");
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    fn slot() -> &'static Mutex<Option<Worker>> {
+        static W: OnceLock<Mutex<Option<Worker>>> = OnceLock::new();
+        W.get_or_init(|| Mutex::new(None))
+    }
+
+    fn spawn(dir: &Path) -> Result<Worker> {
+        let bin = dir.join("icicle-snark");
+        let backend = dir.join("backend");
+        let mut ld = format!("{}:{}", dir.display(), backend.join("cuda").display());
+        if let Some(cur) = std::env::var_os("LD_LIBRARY_PATH") {
+            ld = format!("{ld}:{}", cur.to_string_lossy());
+        }
+        let mut cmd = Command::new(&bin);
+        cmd.env("ICICLE_BACKEND_INSTALL_DIR", &backend)
+            .env("LD_LIBRARY_PATH", ld)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit());
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::unix::process::CommandExt;
+            // die with the server so a crash never leaves a spinning worker holding the GPU
+            unsafe {
+                cmd.pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                    Ok(())
+                });
+            }
+        }
+        let mut child = cmd.spawn().with_context(|| format!("spawn {}", bin.display()))?;
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        tracing::info!("icicle-snark worker started (pid {})", child.id());
+        Ok(Worker { child, stdin, stdout })
+    }
+
+    pub fn prove(dir: &Path, zkey: &Path, witness: &Path, proof: &Path, public: &Path) -> Result<()> {
+        let mut guard = slot().lock().unwrap_or_else(|e| e.into_inner());
+        if guard.is_none() {
+            *guard = Some(spawn(dir)?);
+        }
+        let w = guard.as_mut().unwrap();
+        let cmd = format!(
+            "prove --witness {} --zkey {} --proof {} --public {} --device CUDA",
+            witness.display(),
+            zkey.display(),
+            proof.display(),
+            public.display()
+        );
+        let run = |w: &mut Worker| -> Result<()> {
+            writeln!(w.stdin, "{cmd}")?;
+            w.stdin.flush()?;
+            let mut line = String::new();
+            loop {
+                line.clear();
+                if w.stdout.read_line(&mut line)? == 0 {
+                    return Err(anyhow!("icicle-snark worker exited"));
+                }
+                let l = line.trim_start_matches("> ").trim();
+                if l.starts_with("proof took") {
+                    tracing::info!("icicle {l}");
+                } else if l.contains("COMMAND_COMPLETED") {
+                    return Ok(());
+                } else if !l.is_empty() && !l.starts_with("[INFO]") {
+                    tracing::debug!("icicle: {l}");
+                }
+            }
+        };
+        match run(w) {
+            Ok(()) => {
+                if !proof.is_file() {
+                    return Err(anyhow!("icicle-snark reported completion but wrote no proof"));
+                }
+                Ok(())
+            }
+            Err(e) => {
+                *guard = None; // drop → kill; respawn on the next call
+                Err(e)
+            }
+        }
+    }
+}
+
+/// GPU Groth16 wrap: identity_p254 (GPU) → circom witness (in-process, graph cached) → ICICLE-snark (GPU).
+#[cfg(feature = "native-groth16")]
+fn wrap_groth16_icicle(succinct: &Receipt, dir: &std::path::Path) -> Result<Receipt> {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static GRAPH: OnceLock<Vec<u8>> = OnceLock::new();
+
+    let zkey_dir = env_dir("GROTH16_ZKEY_DIR").ok_or_else(|| anyhow!("GROTH16_ZKEY_DIR is not set (stark_verify_final.zkey + stark_verify_graph.bin)"))?;
+    let zkey = zkey_dir.join("stark_verify_final.zkey");
+    for p in [dir.join("icicle-snark"), zkey.clone(), zkey_dir.join("stark_verify_graph.bin")] {
+        if !p.is_file() {
+            return Err(anyhow!("missing {}", p.display()));
+        }
+    }
+    let inputs = identity_p254_input_json(succinct)?;
+
+    let t = Instant::now();
+    let graph = GRAPH.get_or_init(|| std::fs::read(zkey_dir.join("stark_verify_graph.bin")).expect("read stark_verify_graph.bin"));
+    let witness = circom_witnesscalc::calc_witness(&inputs, graph).map_err(|e| anyhow!("groth16 witness: {e}"))?;
+    tracing::info!("groth16 witness (in-process): {:.1}s", t.elapsed().as_secs_f64());
+
+    let (work, keep) = groth16_work_dir()?;
+    let result = (|| -> Result<Receipt> {
+        let wtns = work.join("witness.wtns");
+        let proof = work.join("proof.json");
+        std::fs::write(&wtns, &witness)?;
+        let t = Instant::now();
+        icicle::prove(dir, &zkey, &wtns, &proof, &work.join("public.json"))?;
+        tracing::info!("groth16 prover (icicle, gpu): {:.1}s", t.elapsed().as_secs_f64());
+        receipt_from_proof_json(succinct, &proof)
+    })();
+    if !keep {
+        let _ = std::fs::remove_dir_all(&work);
+    }
+    result
+}
+
+#[cfg(not(feature = "native-groth16"))]
+fn wrap_groth16_icicle(_: &Receipt, _: &std::path::Path) -> Result<Receipt> {
+    Err(anyhow!("GROTH16_ICICLE_DIR is set but this binary was built without the `native-groth16` feature"))
 }
 
 #[cfg(feature = "native-groth16")]
 const NATIVE_GROTH16_FILES: [&str; 5] = ["stark_verify", "stark_verify.dat", "prover", "stark_verify.cs", "stark_verify_final.pk.dmp"];
 
 /// Same pipeline as `risc0_groth16::prove::docker::shrink_wrap`, without the container:
-/// identity_p254 (GPU) → seal JSON → circom witness (`stark_verify`) → Groth16 (`prover`).
+/// identity_p254 (GPU) → seal JSON → circom witness (`stark_verify`) → Groth16 (`prover`, CPU).
 #[cfg(feature = "native-groth16")]
 fn wrap_groth16_native(succinct: &Receipt, tools: &std::path::Path) -> Result<Receipt> {
-    use risc0_groth16::{prove::to_json, ProofJson, Seal};
-    use risc0_zkvm::{recursion::identity_p254, sha::Digestible, Groth16Receipt, Groth16ReceiptVerifierParameters, InnerReceipt};
     use std::{process::Command, time::Instant};
 
     for f in NATIVE_GROTH16_FILES {
@@ -151,19 +364,13 @@ fn wrap_groth16_native(succinct: &Receipt, tools: &std::path::Path) -> Result<Re
             return Err(anyhow!("GROTH16_NATIVE_DIR={}: missing {f}", tools.display()));
         }
     }
-    let inner = succinct.inner.succinct().map_err(|e| anyhow!("not a succinct receipt: {e:?}"))?;
-
-    let t = Instant::now();
-    let ident = identity_p254(inner).context("identity_p254")?;
-    tracing::info!("identity_p254: {:.1}s", t.elapsed().as_secs_f64());
-
-    let work = std::env::temp_dir().join(format!("zkotc-groth16-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(&work)?;
+    let inputs = identity_p254_input_json(succinct)?;
+    let (work, keep) = groth16_work_dir()?;
     let result = (|| -> Result<Receipt> {
         let input = work.join("input.json");
         let wtns = work.join("witness.wtns");
         let proof = work.join("proof.json");
-        std::fs::write(&input, to_json(&ident.get_seal_bytes())?)?;
+        std::fs::write(&input, inputs)?;
 
         let t = Instant::now();
         // circom's generated witness generator wants a 16 MiB stack and loads `stark_verify.dat` from the cwd
@@ -172,14 +379,13 @@ fn wrap_groth16_native(succinct: &Receipt, tools: &std::path::Path) -> Result<Re
 
         let t = Instant::now();
         run("prover", Command::new(tools.join("prover")).current_dir(tools).arg("stark_verify.cs").arg("stark_verify_final.pk.dmp").arg(&wtns).arg(&proof))?;
-        tracing::info!("groth16 prover: {:.1}s", t.elapsed().as_secs_f64());
+        tracing::info!("groth16 prover (cpu): {:.1}s", t.elapsed().as_secs_f64());
 
-        let proof: ProofJson = serde_json::from_str(&std::fs::read_to_string(&proof)?)?;
-        let seal: Seal = proof.try_into()?;
-        let g16 = Groth16Receipt::new(seal.to_vec(), inner.claim.clone(), Groth16ReceiptVerifierParameters::default().digest());
-        Ok(Receipt::new(InnerReceipt::Groth16(g16), succinct.journal.bytes.clone()))
+        receipt_from_proof_json(succinct, &proof)
     })();
-    let _ = std::fs::remove_dir_all(&work);
+    if !keep {
+        let _ = std::fs::remove_dir_all(&work);
+    }
     result
 }
 
@@ -259,7 +465,12 @@ pub fn build_input(
     since_yyyymmdd: u64,
     offer_id: u64,
 ) -> Result<(ProverInput, zkotc_lib::dekont::Dekont)> {
-    let d = zkotc_lib::inspect_dekont(&eml).map_err(|e| anyhow!("dekont: {e}"))?;
+    // CRLF-normalize once here; the guest hashes the bytes as given and the hint offsets refer to them
+    let eml = match zkotc_lib::dkim::normalized(&eml) {
+        std::borrow::Cow::Borrowed(_) => eml,
+        std::borrow::Cow::Owned(v) => v,
+    };
+    let (d, attachment) = zkotc_lib::locate_dekont(&eml).map_err(|e| anyhow!("dekont: {e}"))?;
     if d.direction != zkotc_lib::dekont::Direction::Outgoing {
         return Err(anyhow!("this dekont is an incoming transfer; upload the dekont of the transfer you sent"));
     }
@@ -283,7 +494,7 @@ pub fn build_input(
     if d.date_yyyymmdd < since_yyyymmdd {
         return Err(anyhow!("transfer dated {} is before the reservation day {since_yyyymmdd}", d.date_yyyymmdd));
     }
-    Ok((ProverInput { eml, dkim_pubkey_der: der, offer_id }, d))
+    Ok((ProverInput { eml, dkim_pubkey_der: der, offer_id, attachment: Some(attachment) }, d))
 }
 
 pub const PINNED_DER: &[u8] = include_bytes!("../../../zkotc-lib/testdata/ziraat-ileti-msg2.der");

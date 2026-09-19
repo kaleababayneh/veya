@@ -31,12 +31,13 @@ pub struct Header {
 }
 
 #[derive(Debug, Clone)]
-pub struct Verified {
+pub struct Verified<'a> {
     pub domain: String,
     pub selector: String,
     pub headers: Vec<Header>,
-    /// message body (after the blank line), CRLF-normalized
-    pub body: Vec<u8>,
+    /// message body (after the blank line), borrowed from the input — which must already be CRLF
+    /// (see [`normalized`]); a bare-LF body simply fails the body hash
+    pub body: &'a [u8],
 }
 
 struct Sig {
@@ -51,18 +52,23 @@ struct Sig {
     body_length: Option<usize>,
 }
 
-/// Normalize line endings to CRLF (only if some bare LF exists) and split at the first blank line.
-pub fn split_message(eml: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let owned;
-    let norm: &[u8] = if has_bare_lf(eml) {
-        owned = normalize_crlf(eml);
-        &owned
+/// Split at the first blank line: (header block incl. its final CRLF, body). No copies, no
+/// normalization — the guest gets CRLF input from the host (`normalized`); a bare-LF message would
+/// only fail its DKIM body hash, never verify wrongly.
+pub fn split_message(eml: &[u8]) -> (&[u8], &[u8]) {
+    match find(eml, b"\r\n\r\n") {
+        Some(i) => (&eml[..i + 2], &eml[i + 4..]),
+        None => (eml, &[]),
+    }
+}
+
+/// Host side: CRLF-normalize an `.eml` saved with bare LF line endings (scans the whole file — do it
+/// once on the host, not in the guest).
+pub fn normalized(eml: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+    if has_bare_lf(eml) {
+        std::borrow::Cow::Owned(normalize_crlf(eml))
     } else {
-        eml
-    };
-    match find(norm, b"\r\n\r\n") {
-        Some(i) => (norm[..i + 2].to_vec(), norm[i + 4..].to_vec()),
-        None => (norm.to_vec(), Vec::new()),
+        std::borrow::Cow::Borrowed(eml)
     }
 }
 
@@ -106,9 +112,9 @@ fn push_header(out: &mut Vec<Header>, raw: Vec<u8>) {
 }
 
 /// Verify the first DKIM-Signature that validates with `pubkey_der`.
-pub fn verify(eml: &[u8], pubkey_der: &[u8]) -> Result<Verified, DkimError> {
+pub fn verify<'a>(eml: &'a [u8], pubkey_der: &[u8]) -> Result<Verified<'a>, DkimError> {
     let (hblock, body) = split_message(eml);
-    let headers = parse_headers(&hblock);
+    let headers = parse_headers(hblock);
     let pk = RsaPublicKey::from_public_key_der(pubkey_der).map_err(|_| DkimError::BadPublicKey)?;
 
     let mut last_err = DkimError::NoSignature;
@@ -116,7 +122,7 @@ pub fn verify(eml: &[u8], pubkey_der: &[u8]) -> Result<Verified, DkimError> {
         if !h.name.eq_ignore_ascii_case("DKIM-Signature") {
             continue;
         }
-        match verify_one(&headers, idx, &body, &pk) {
+        match verify_one(&headers, idx, body, &pk) {
             Ok(sig) => {
                 return Ok(Verified {
                     domain: sig.domain,
@@ -247,10 +253,7 @@ fn parse_canon(s: &str) -> Result<Canon, DkimError> {
 }
 
 fn b64(s: &str) -> Result<Vec<u8>, DkimError> {
-    use base64::Engine;
-    base64::engine::general_purpose::STANDARD
-        .decode(s)
-        .map_err(|_| DkimError::MalformedSignature("base64".into()))
+    crate::mime::decode_base64_mime(s.as_bytes()).map_err(|_| DkimError::MalformedSignature("base64".into()))
 }
 
 /// Remove the value of the `b=` tag, keeping every other byte (whitespace and folding included)
@@ -394,7 +397,7 @@ fn normalize_crlf(b: &[u8]) -> Vec<u8> {
 }
 
 pub fn find(h: &[u8], n: &[u8]) -> Option<usize> {
-    h.windows(n.len()).position(|w| w == n)
+    crate::text::find_bytes(h, n)
 }
 
 pub fn header_value(headers: &[Header], name: &str) -> Option<String> {

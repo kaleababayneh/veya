@@ -37,7 +37,8 @@ The receipt (seal, journal, image id — no e-mail content) is in `contracts/tes
 STARK + succinct receipt ~10 s on the GPU, then the Groth16 wrap 19 s (identity_p254 0.3 s on GPU, circom witness 7 s,
 Groth16 prover 12 s on CPU). The router accepts the seal; a tampered journal is rejected. The wrap uses RISC Zero's
 reference CPU prover run natively (`GROTH16_NATIVE_DIR`, no Docker) because the CUDA Groth16 wrap in risc0 3.0.x
-crashes ([risc0#3785](https://github.com/risc0/risc0/issues/3785)). Setup in `docs/OPERATIONS.md`.
+crashes ([risc0#3785](https://github.com/risc0/risc0/issues/3785)). **Runbook: [`docs/GPU.md`](docs/GPU.md)** — rent a box and
+`scripts/gpu/deploy.sh "<ssh line>" --switch` brings a prover up in ~4 minutes from prebuilt artifacts.
 
 ## Testnet deployments (Protocol 28)
 | Contract | Id |

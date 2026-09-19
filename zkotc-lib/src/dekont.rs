@@ -6,7 +6,7 @@
 //! sentence: `Hesabınıza 3.200,00 TL (…) Yatırılmıştır.` (incoming) or
 //! `Hesabınızdan … TL (…) Çekilmiştir.` (outgoing).
 
-use crate::text::{clean_html_text, parse_amount, parse_date_dmy};
+use crate::text::{parse_amount, parse_date_dmy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -98,11 +98,9 @@ fn parse_fields(desc: &str) -> Vec<(String, String)> {
 }
 
 pub fn parse(html: &[u8]) -> Result<Dekont, String> {
-    let text = std::str::from_utf8(html).map_err(|_| "dekont is not UTF-8")?;
     let mut kv: Vec<(String, String)> = Vec::new();
     let mut free: Vec<String> = Vec::new();
-    for tr in rows(text) {
-        let cells: Vec<String> = cells(tr).into_iter().map(clean_html_text).filter(|c| !c.is_empty()).collect();
+    for cells in table_rows(html)? {
         match cells.as_slice() {
             [] => {}
             [k, sep, rest @ ..] if sep == ":" => kv.push((k.to_uppercase(), rest.join(" "))),
@@ -177,29 +175,110 @@ fn amount_before_tl(s: &str) -> Option<u64> {
     parse_amount(&head[start..]).map(|v| v.unsigned_abs())
 }
 
-fn rows(html: &str) -> impl Iterator<Item = &str> {
-    let mut rest = html;
-    std::iter::from_fn(move || {
-        let tr = rest.find("<tr")?;
-        let after = &rest[tr..];
-        let end = after.find("</tr>")?;
-        rest = &after[end + 5..];
-        Some(&after[..end])
-    })
+/// One pass over the HTML bytes: `<tr>`/`<td>` structure and cell text (tags dropped, entities decoded,
+/// whitespace collapsed, trimmed) at once. Cells come out cleaned; empty cells are skipped. Replaces
+/// row search + cell search + per-cell cleaning, which were six passes over the 54 KB document.
+fn table_rows(html: &[u8]) -> Result<Vec<Vec<String>>, String> {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut row: Option<Vec<String>> = None;
+    let mut cell: Option<Vec<u8>> = None;
+    let mut pending_space = false;
+    let n = html.len();
+    let mut i = 0usize;
+    while i < n {
+        let c = html[i];
+        if c == b'<' {
+            let closing = html.get(i + 1) == Some(&b'/');
+            let name_start = i + 1 + closing as usize;
+            let mut j = name_start;
+            while j < n && html[j].is_ascii_alphanumeric() {
+                j += 1;
+            }
+            let name = &html[name_start..j];
+            while j < n && html[j] != b'>' {
+                j += 1;
+            }
+            i = j + 1;
+            if name.eq_ignore_ascii_case(b"tr") {
+                if closing {
+                    if let Some(c) = cell.take() {
+                        push_cell(&mut row, c)?;
+                    }
+                    if let Some(r) = row.take() {
+                        rows.push(r);
+                    }
+                } else {
+                    row = Some(Vec::new());
+                }
+            } else if name.eq_ignore_ascii_case(b"td") {
+                if closing {
+                    if let Some(c) = cell.take() {
+                        push_cell(&mut row, c)?;
+                    }
+                } else if row.is_some() {
+                    cell = Some(Vec::new());
+                    pending_space = false;
+                }
+            } else {
+                pending_space = true; // any other tag inside a cell separates words
+            }
+            continue;
+        }
+        let Some(buf) = cell.as_mut() else {
+            i += 1;
+            continue;
+        };
+        let (emit, adv): (&[u8], usize) = match c {
+            b'&' => {
+                let rest = &html[i..];
+                if rest.starts_with(b"&amp;") {
+                    (b"&", 5)
+                } else if rest.starts_with(b"&lt;") {
+                    (b"<", 4)
+                } else if rest.starts_with(b"&gt;") {
+                    (b">", 4)
+                } else if rest.starts_with(b"&quot;") {
+                    (b"\"", 6)
+                } else if rest.starts_with(b"&#39;") {
+                    (b"'", 5)
+                } else if rest.starts_with(b"&nbsp;") {
+                    pending_space = true;
+                    (b"", 6)
+                } else {
+                    (b"&", 1)
+                }
+            }
+            b' ' | b'\t' | b'\n' | b'\r' | 0x0b | 0x0c => {
+                pending_space = true;
+                (b"", 1)
+            }
+            0xC2 if html.get(i + 1) == Some(&0xA0) => {
+                pending_space = true;
+                (b"", 2)
+            }
+            _ => (&html[i..i + 1], 1),
+        };
+        if !emit.is_empty() {
+            if pending_space && !buf.is_empty() {
+                buf.push(b' ');
+            }
+            pending_space = false;
+            buf.extend_from_slice(emit);
+        }
+        i += adv;
+    }
+    Ok(rows)
 }
 
-fn cells(tr_html: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut rest = tr_html;
-    while let Some(td) = rest.find("<td") {
-        let after = &rest[td..];
-        let (Some(open_end), Some(close)) = (after.find('>'), after.find("</td>")) else { break };
-        if open_end < close {
-            out.push(&after[open_end + 1..close]);
-        }
-        rest = &after[close + 5..];
+fn push_cell(row: &mut Option<Vec<String>>, bytes: Vec<u8>) -> Result<(), String> {
+    if bytes.is_empty() {
+        return Ok(());
     }
-    out
+    let text = String::from_utf8(bytes).map_err(|_| "dekont cell is not UTF-8")?;
+    if let Some(r) = row.as_mut() {
+        r.push(text);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
