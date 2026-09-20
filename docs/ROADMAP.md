@@ -6,8 +6,9 @@ router, market escrow v5 (ads + reservations, encrypted payee, declare/bond prot
 First dekont with a typed reference arrived today (reservation #7); the parser fix for Ziraat's real layout is built
 and being switched in. What remains for the submission is verification, operations and polish, not cryptography.
 
-Hackathon: **Stellar Pro, Istanbul, 18–20 September 2026.** Submission target: **17 September**, so the 18th–20th are
-for the demo, not for code.
+Hackathon: **Stellar Pro, Istanbul, 19–20 September 2026** (Grand Pera; submission through the judging portal during the
+event, finalists present on the 20th). Code freeze target: **16 September**; rubric mapping and the day-by-day plan are in
+[`hackathon.md`](../hackathon.md).
 
 Legend: **Done** · **Dropped** (decided against, with the reason) · **Open** (still to do) · **Partial**.
 
@@ -48,7 +49,7 @@ The plans of 8, 9 and 10 September, merged and de-duplicated. Item numbers are n
 | 18 | UI pass: step cards, mobile market cards, mobile nav, copy | **Done 2026-09-10/12** (reservation wizard with one active step, copyable transfer card, drop zone, collapsed terms). **Open:** toasts, skeletons, Turkish copy toggle, wallet-not-installed hint, seeded ads. |
 | 19 | Maker dashboard on the ad page (fills, reservations, bond) | **Partial.** Stats, price change, close, reveal own payee, reservation list exist; no per-reservation actions or bond view. |
 | 20 | Activity view from Soroban events; indexer + notifications | **Open.** `/me` scans via RPC; no indexer, no alerts. |
-| 21 | Bank-provider abstraction, second bank | **Done on testnet 2026-09-12 — VakıfBank.** Provider chosen from the DKIM `d=` domain (`Provider::for_domain`); Ziraat path untouched. VakıfBank: `Dekont.pdf` inside the signed body → `pdf.rs` (inflate + one string per table cell, CID fonts through ToUnicode) → `vakif.rs` (same `Dekont` shape: payee, reference, nullifier shared). Escrow `set_domains` (extra bank domain hashes) + Vakıf key hash registered; guest image id aa06027d…; web step 3 has a bank switch. Gotcha found and handled: Gmail rewrites the bank's malformed Message-ID after verifying and keeps the signed value in `X-Google-Original-Message-ID`; the verifier restores it. Live prover verified both real Vakıf receipts (outgoing: DKIM + parse + payee/reference checks; incoming: refused). **Open:** one real Vakıf-paid trade to settle end to end. |
+| 21 | Bank-provider abstraction, second bank | **Done on testnet 2026-09-12 — VakıfBank.** Provider chosen from the DKIM `d=` domain (`Provider::for_domain`); Ziraat path untouched. VakıfBank: `Dekont.pdf` inside the signed body → `pdf.rs` (inflate + one string per table cell, CID fonts through ToUnicode) → `vakif.rs` (same `Dekont` shape: payee, reference, nullifier shared). Escrow `set_domains` (extra bank domain hashes) + Vakıf key hash registered; guest image id aa06027d…; web step 3 has a bank switch. Gotcha found and handled: Gmail rewrites the bank's malformed Message-ID after verifying and keeps the signed value in `X-Google-Original-Message-ID`; the verifier restores it. Live prover verified both real Vakıf receipts (outgoing: DKIM + parse + payee/reference checks; incoming: refused). **First Vakıf-paid trade settled 2026-09-12 21:58 Istanbul** (reservation #11, ₺50 → 49.875 XLM, 5 min from reserve to claim). Guest cost is higher than Ziraat's: 10.5M cycles / 13 s STARK (PDF inflate + parse) vs 2.6M / 5 s — trim later by inflating only the page content stream and the two used CMaps. |
 | 22 | Onboarding: sponsored trustlines, wallet kit on mobile, Turkish UI | **Open.** |
 | 23 | Market economics: oracle-pegged price with spread, buyer bond, reputation | **Open.** Counters (settled/active) exist; no pegging, no buyer deposit. |
 

@@ -530,6 +530,12 @@ function BuyerFlow({
           Changed your mind and have <b>not</b> paid? <button className="underline" onClick={onRelease} disabled={!!busy}>Release the reservation</button> · <Link className="underline" href="/">Back to the market</Link>
         </p>
       )}
+      {!bond && paid && expired && !proved && (
+        <p className="text-xs text-muted">
+          Timer ended and you will not settle this one (never paid, or gave up)? <button className="underline" onClick={onRelease} disabled={!!busy}>Release the reservation</button> to free your reservation slot.
+          Releasing it yourself waives the bond claim, so if you did pay, upload the receipt and settle instead.
+        </p>
+      )}
     </div>
   );
 }

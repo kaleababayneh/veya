@@ -134,7 +134,7 @@ export const ERROR_HELP: Record<string, string> = {
   InvalidIban: "IBAN must be a Turkish IBAN: TR + 24 digits.",
   AmountOutOfRange: "The trade's TRY value is outside the ad's limits.",
   InsufficientLiquidity: "The ad does not have that much unreserved liquidity right now.",
-  TooManyReservations: "This ad, or your wallet, already has the maximum number of active reservations.",
+  TooManyReservations: "This ad, or your wallet, already has the maximum number of active reservations. Reservations stay active after their timer ends until they are settled or released: open your older ones under My activity and release the ones you will not settle.",
   BondExhausted: "The ad's bond pool cannot back another reservation right now; try a smaller amount or another ad.",
   AlreadyDeclared: "You already declared this payment; continue with the e-dekont upload.",
   LockExpired: "Your reservation has ended. Do not send money now; reserve again first.",
