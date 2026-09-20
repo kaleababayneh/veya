@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./product.css";
 import { AppFrame } from "@/components/AppFrame";
 import { ToastProvider } from "@/components/Toast";
 import { I18nProvider } from "@/lib/i18n";

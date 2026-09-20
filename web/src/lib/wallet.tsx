@@ -26,12 +26,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let off: (() => void) | undefined;
+    let alive = true;
     (async () => {
       const [{ StellarWalletsKit }, { defaultModules }, { KitEventType, Networks }] = await Promise.all([
         import("@creit.tech/stellar-wallets-kit/sdk"),
         import("@creit.tech/stellar-wallets-kit/modules/utils"),
         import("@creit.tech/stellar-wallets-kit/types"),
       ]);
+      if (!alive) return;
       StellarWalletsKit.init({
         modules: defaultModules(),
         network: Networks.TESTNET,
@@ -39,9 +41,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       });
       off = StellarWalletsKit.on(KitEventType.STATE_UPDATED, (e) => setAddress(e.payload.address ?? null));
       setKit(() => StellarWalletsKit);
-    })();
-    return () => off?.();
-  }, []);
+    })().catch(() => { if(alive) toast({kind:"error",title:"Wallet setup failed",body:"Reload this page to retry."}); });
+    return () => { alive=false; off?.(); };
+  }, [toast]);
 
   const connect = useCallback(async () => {
     if (!kit) return;
@@ -67,7 +69,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const signTransaction = useCallback<WalletCtx["signTransaction"]>(
     async (xdr, opts) => {
       if (!kit) throw new Error("wallet not ready");
-      return kit.signTransaction(xdr, { networkPassphrase: config.networkPassphrase, address: address ?? undefined, ...opts });
+      if (!address || (await kit.getAddress()).address !== address) throw new Error("Wallet changed. Review this action with your current wallet.");
+      if ((await kit.getNetwork()).networkPassphrase !== config.networkPassphrase) throw new Error("Switch your wallet to the configured Stellar testnet before continuing.");
+      const signed = await kit.signTransaction(xdr, { ...opts, networkPassphrase: config.networkPassphrase, address });
+      if ((await kit.getAddress()).address !== address) throw new Error("Wallet changed during signing. Transaction was not submitted.");
+      return signed;
     },
     [kit, address],
   );
@@ -75,7 +81,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const signMessage = useCallback<WalletCtx["signMessage"]>(
     async (message) => {
       if (!kit) throw new Error("wallet not ready");
-      return kit.signMessage(message, { networkPassphrase: config.networkPassphrase, address: address ?? undefined });
+      if (!address || (await kit.getAddress()).address !== address) throw new Error("Wallet changed. Retry with your current wallet.");
+      const signed = await kit.signMessage(message, { networkPassphrase: config.networkPassphrase, address });
+      if ((await kit.getAddress()).address !== address) throw new Error("Wallet changed during signing. Retry with your current wallet.");
+      return signed;
     },
     [kit, address],
   );

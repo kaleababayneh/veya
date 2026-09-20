@@ -8,16 +8,16 @@ export function fmtToken(amount: bigint | number | string, decimals = 7): string
   const a = neg ? -v : v;
   const base = 10n ** BigInt(decimals);
   const int = a / base;
-  let frac = (a % base).toString().padStart(decimals, "0").replace(/0+$/, "");
-  if (frac.length > 4) frac = frac.slice(0, 4);
+  const frac = (a % base).toString().padStart(decimals, "0").replace(/0+$/, "");
   return `${neg ? "-" : ""}${int.toLocaleString("en-US")}${frac ? "." + frac : ""}`;
 }
 
 /** human token amount -> i128 smallest units */
 export function parseToken(s: string, decimals = 7): bigint {
-  const t = s.trim().replace(/,/g, "");
+  const t = s.trim();
   if (!/^\d+(\.\d+)?$/.test(t)) throw new Error("invalid amount");
   const [i, f = ""] = t.split(".");
+  if(f.length > decimals) throw new Error("Too many decimal places");
   return BigInt(i) * 10n ** BigInt(decimals) + BigInt((f + "0".repeat(decimals)).slice(0, decimals));
 }
 

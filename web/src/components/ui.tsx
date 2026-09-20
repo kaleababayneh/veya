@@ -75,14 +75,15 @@ export function Alert({ kind = "info", children }: { kind?: "info" | "warn" | "e
     error: "border-danger/40 bg-danger/10",
     ok: "border-ok/40 bg-ok/10",
   }[kind];
-  return <div className={`rounded-xl border px-4 py-3 text-sm ${cls}`}>{children}</div>;
+  return <div role={kind === "error" ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm ${cls}`}>{children}</div>;
 }
 
 export function TxLink({ hash, label = "View transaction" }: { hash: string; label?: string }) {
+  const {t}=useI18n();
   if (!hash) return null;
   return (
     <a className="underline decoration-dotted underline-offset-4 hover:text-accent" href={txUrl(hash)} target="_blank" rel="noreferrer">
-      {label} ↗
+      {t(label)} ↗
     </a>
   );
 }

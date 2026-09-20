@@ -147,7 +147,7 @@ export async function firmPrice(token: string, side: "buy" | "sell", sellAmount:
 export async function kyc(token: string, account: string): Promise<void> {
   const t = await discover();
   if (!t.KYC_SERVER) return;
-  await j(`${t.KYC_SERVER}/customer`, { method: "PUT", headers: { ...bearer(token), "content-type": "application/json" }, body: JSON.stringify({ account }) }).catch(() => {});
+  await j(`${t.KYC_SERVER}/customer`, { method: "PUT", headers: { ...bearer(token), "content-type": "application/json" }, body: JSON.stringify({ account }) });
 }
 
 // ───────────────────────────── SEP-6 ─────────────────────────────

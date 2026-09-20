@@ -13,5 +13,5 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     </header>
     <main id="main-content">{children}</main>
   </>;
-  return <WalletProvider><Nav /><main id="main-content" className="mx-auto max-w-5xl px-4 py-8">{children}</main></WalletProvider>;
+  return <WalletProvider><div className="product-app"><Nav /><main id="main-content" className="product-main">{children}</main><footer className="product-footer">Veya · Stellar testnet</footer></div></WalletProvider>;
 }

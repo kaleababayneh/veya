@@ -6,7 +6,7 @@ const Arrow = () => <span aria-hidden="true">↗</span>;
 export default function Home() {
   return <VeyaMotion>
     <section className="veya-hero" aria-labelledby="hero-title">
-      <Image src="/brand/bosphorus-options/option-1.webp" alt="A couple at a Bosphorus café table, one showing the other something on a phone, a ferry passing on the water behind them" fill unoptimized loading="eager" fetchPriority="high" sizes="100vw" className="hero-photo" />
+      <Image src="/brand/bosphorus-options/option-2.webp" alt="Two people sharing a phone at an Istanbul waterfront café, with a ferry crossing the Bosphorus behind them" fill unoptimized loading="eager" fetchPriority="high" sizes="100vw" className="hero-photo" />
       <div className="hero-shade" />
       <div className="hero-copy">
         <p className="eyebrow">A familiar way forward</p>
