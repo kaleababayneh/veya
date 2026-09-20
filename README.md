@@ -8,8 +8,7 @@ Live on Stellar testnet: **https://www.veya.lol** · Stellar Pro Hackathon, Ista
 
 ## The problem we solve
 
-Türkiye has instant, free transfers between every bank (FAST) and heavy everyday demand for crypto. The rail exists; the
-evidence does not.
+Türkiye has instant transfers between every bank (FAST) and heavy everyday demand for crypto. However, people can not do a peer to peer on ramp/ off ramp without relying on a third party. The rail exists however the evidence does not.
 
 - **Exchanges** solve lira-to-crypto with custody, KYC and a spread. Your coins sit with someone else.
 - **P2P desks** run on screenshots. A receipt screenshot takes a minute to edit, so escrows freeze and a moderator decides who
