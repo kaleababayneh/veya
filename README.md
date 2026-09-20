@@ -38,7 +38,7 @@ buyer  ──settle(journal, seal) ───────────────
 | `prover` | RISC Zero guest (`prover/IMAGE_ID`), `zkotc` CLI, `zkotc-server` (jobs API, GPU Groth16 via ICICLE or the reference CPU prover) | |
 | `web` | Next.js 16: market (with the anchor's price to beat), ads, reservation wizard, `/api/reveal` (sealed IBAN → reserving wallet), `/api/prove` (gate to the prover), `/anchor` (SEP-1/10/6/38 client for makers), SEP-1 `stellar.toml` | lint + types + build in CI |
 | `scripts/gpu` | Rent-and-deploy runbook for the GPU prover (artifacts on an Azure host, HTTPS via Caddy, escrow switch) | |
-| `docs` | `ROADMAP.md` (status + plan), `GPU.md`, `OPERATIONS.md`, PRD, demo script, QA checklist | |
+| `docs` | **`TECHNICAL-DESIGN.md`** (architecture, one trade end to end, what the guest and the escrow verify, trust model, decisions, challenges), `ROADMAP.md`, `GPU.md`, `OPERATIONS.md`, PRD, demo script, QA checklist | |
 
 ## Proven end to end (2026-09-08 → full settlement 2026-09-10)
 **First complete settlement on testnet, 2026-09-10 01:00 Istanbul:** offer #3 on escrow v4 (10 XLM for ₺50), reserved and

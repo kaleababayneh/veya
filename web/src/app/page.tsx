@@ -82,21 +82,6 @@ export default function Market() {
         </div>
       </section>
 
-      {anchorPrice !== null && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-panel px-4 py-3 text-sm">
-          <p>
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Price to beat</span>{" "}
-            the licensed anchor sells USDC at <b>{fmtTRY(BigInt(Math.round(anchorPrice * 100)))}</b> (USD/TRY oracle + 0.5% spread, KYC).
-            {(() => {
-              const best = (ads ?? []).filter((a) => tradeable(a) && tokenByAddress(a.token).symbol === "USDC").sort((x, y) => (x.price_kurus < y.price_kurus ? -1 : 1))[0];
-              if (!best) return <span className="text-muted"> No USDC maker yet: the first one to price under it wins the book.</span>;
-              const pct = ((anchorPrice * 100 - Number(best.price_kurus)) / (anchorPrice * 100)) * 100;
-              return <> Best peer price <b>{fmtTRY(best.price_kurus)}</b>, {pct >= 0 ? <span className="text-ok">{pct.toFixed(1)}% below the anchor</span> : <span className="text-warn">{(-pct).toFixed(1)}% above</span>}, no KYC.</>;
-            })()}
-          </p>
-          <Link href="/anchor" className="text-xs underline decoration-dotted">Makers: fund inventory or cash out via the anchor →</Link>
-        </section>
-      )}
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Buy</h2>

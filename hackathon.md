@@ -48,8 +48,8 @@ narrative, presentation. → **Fill this in when the criteria are released and r
 | Anchor / local payments | Two rails. (a) The peer rail *is* a TRY rail: real ₺50/₺58 FAST transfers on 12 Sep produced real XLM on testnet (reservations #7, #8, #11), from Ziraat and VakıfBank, evidence = the bank's DKIM-signed receipt. (b) **Anchor integration done 13 Sep**: zkOTC is a SEP client of DevRel's TR mock anchor (`tr-mock-anchor.fly.dev`: SEP-1 discovery, SEP-10 wallet login, SEP-6 deposit/withdraw, SEP-38 quotes); makers fund USDC inventory and cash out through it, and its rate is the "price to beat" on the market. A USDC ad (merve, ₺47.90, 1.9 % under the anchor) was funded through the anchor. SEP-1 `stellar.toml` published | Tell the story as one product (§3.3): the anchor is the licensed rail makers use; the peer rail is what buyers use and what wins on price and privacy |
 | Core feature / load-bearing | Without the verifier router no trade settles; without the wallet kit nothing signs | none |
 | Real traction / real users | 3 settled trades (2 Ziraat-paid, 1 VakıfBank-paid), 6 ads, 11 reservations, all by the team | **onboard strangers**: every Ziraat/Vakıf customer in the room can complete a trade in 3 minutes (§3.4) |
-| README, documented contracts, deployed artifacts, demo | README rewritten 12 Sep; `contracts/DEPLOYMENTS.md`; live at zkotc.vercel.app; escrow + verifier on testnet | add a **technical design doc with an architecture diagram** (§3.5) and a **demo video** |
-| Pitch deck (template) | none | make it (§3.6) |
+| README, documented contracts, deployed artifacts, demo | README rewritten 12 Sep; `contracts/DEPLOYMENTS.md`; live at zkotc.vercel.app; escrow + verifier on testnet; **`docs/TECHNICAL-DESIGN.md` with the architecture diagram (13 Sep)** | a **demo video** |
+| Pitch deck (template) | content written 13 Sep: `docs/PITCH-DECK.md` — the template's five slides plus four added, on-slide copy, speaker notes, asset list, 4:00 timeline | paste into your copy of the Google Slides template; take the screenshots; record the backup video |
 | Skill citation | none used explicitly | use and cite `skills/standards/SKILL.md` (SEP-53 signed messages, SEP-1) and the Anchors skill (§3.7) |
 
 ## 3. Plan
@@ -130,8 +130,8 @@ Put the list in the README ("Skills used") and in the submission form.
 - [ ] Team name, members, contacts
 - [ ] GitHub URL (public), README top section current, `hackathon.md` linked
 - [ ] Live demo URL https://zkotc.vercel.app, deployment URLs (escrow, verifier router on stellar.expert), `contracts/DEPLOYMENTS.md`
-- [ ] Technical design doc link (`docs/TECHNICAL-DESIGN.md`) with the diagram
-- [ ] Pitch deck link (copy of the official template, sharing on)
+- [x] Technical design doc link (`docs/TECHNICAL-DESIGN.md`) with the diagram (written 13 Sep; export the Mermaid diagram as PNG for the deck)
+- [ ] Pitch deck link (copy of the official template, sharing on) — content ready in `docs/PITCH-DECK.md`
 - [ ] Demo video link (2–3 min, full loop, tamper demo)
 - [ ] Skill files cited by path
 - [ ] Track selected: **Genesis**
