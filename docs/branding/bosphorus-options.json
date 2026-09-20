@@ -1,0 +1,35 @@
+{
+  "generator": "Built-in imagegen",
+  "options": [
+    {
+      "number": 1,
+      "name": "Golden-hour window",
+      "prompt": "Create Veya hero variation 1, Golden-hour window, based on the attached reference photo. Closest to the reference: preserve the couple, table, poses, clothing and left wall. Replace the city/tower view entirely with broad Bosphorus blue water, a small white public ferry and the distant Asian shoreline in golden afternoon light. Make the window wider so the strait is clearly recognizable. No Galata Tower. Preserve the editorial photographic mood, natural candid interaction and premium tactile materials. The Bosphorus must occupy a substantial clearly visible part of the upper right background, not just a tiny sliver. Subjects on right, left 45 percent spacious dark text-safe area. 3:2 landscape, photorealistic, opaque, no text, logos, watermarks or visible readable phone interface. Anatomically natural hands. No fake bank cards or currency. This is a photographic hero asset, not a website mockup.",
+      "source": "/Users/mehmetsemihbabacan/.codex/generated_images/01a0a013-3bbd-7901-b72e-71f5a4cd208d/exec-5ca1569f-c9ac-495c-a336-ef690c5a8bb8.png"
+    },
+    {
+      "number": 2,
+      "name": "Waterfront café",
+      "prompt": "Create Veya hero variation 2, Waterfront café, based on the attached reference photo. Recompose as a cozy ground-floor waterfront cafe on the European Bosphorus shore. Same young adult couple and relaxed phone-sharing activity on the right, ivory knit and sage shirt. Broad open window immediately behind them shows turquoise Bosphorus water, a passing white Istanbul ferry and distant waterfront houses. Brighter late-morning light, walnut furniture, tea glasses. Keep left 45 percent dark plum cafe wall and softly blurred foreground. Preserve the editorial photographic mood, natural candid interaction and premium tactile materials. The Bosphorus must occupy a substantial clearly visible part of the upper right background, not just a tiny sliver. Subjects on right, left 45 percent spacious dark text-safe area. 3:2 landscape, photorealistic, opaque, no text, logos, watermarks or visible readable phone interface. Anatomically natural hands. No fake bank cards or currency. This is a photographic hero asset, not a website mockup.",
+      "source": "/Users/mehmetsemihbabacan/.codex/generated_images/01a0a013-3bbd-7901-b72e-71f5a4cd208d/exec-66470390-2770-42d3-81c8-cab58c320458.png"
+    },
+    {
+      "number": 3,
+      "name": "Bridge in the distance",
+      "prompt": "Create Veya hero variation 3, Bridge in the distance, based on the attached reference photo. Keep the intimate reference cafe scene and the couple sharing a phone on the right. Background through the large window is the Bosphorus strait with its first suspension bridge visible in the distance and the green Asian shore beyond; realistic far-away scale, not looming over people. Warm late afternoon with a slight haze, aubergine interior and soft ivory/pistachio clothing. Left half calm dark wall for headline. Preserve the editorial photographic mood, natural candid interaction and premium tactile materials. The Bosphorus must occupy a substantial clearly visible part of the upper right background, not just a tiny sliver. Subjects on right, left 45 percent spacious dark text-safe area. 3:2 landscape, photorealistic, opaque, no text, logos, watermarks or visible readable phone interface. Anatomically natural hands. No fake bank cards or currency. This is a photographic hero asset, not a website mockup.",
+      "source": "/Users/mehmetsemihbabacan/.codex/generated_images/01a0a013-3bbd-7901-b72e-71f5a4cd208d/exec-7729a37c-9a9d-4387-8a93-d76f57fa6103.png"
+    },
+    {
+      "number": 4,
+      "name": "Bosphorus panorama",
+      "prompt": "Create Veya hero variation 4, Bosphorus panorama, based on the attached reference photo. A slightly wider contemporary waterfront cafe window and smaller figures, so much more of the Bosphorus is visible behind the same relaxed young couple. Keep woman in ivory knit and man in sage shirt sharing the phone on the right at a walnut table with Turkish tea. Outside: expansive Bosphorus strait, distant green hills and waterfront yalıs, one small white ferry far away, no Galata tower. Soft overcast morning daylight and warm cafe interior, serene muted blue water. Left 45 percent shadowed aubergine wall remains empty for white headline. The image should feel candid, sophisticated and less tightly cropped than the reference. Keep the natural candid interaction and tactile premium photography. Composition: subjects on right, broad visible Bosphorus background, spacious left text-safe area. 3:2 landscape high resolution, opaque. No text, logo, watermark, visible readable phone UI or currency symbols. Anatomically natural hands. Photographic image only, not website screenshot.",
+      "source": "/Users/mehmetsemihbabacan/.codex/generated_images/01a0a013-3bbd-7901-b72e-71f5a4cd208d/exec-05fbd72e-f7f6-40d3-8260-049839699915.png"
+    },
+    {
+      "number": 5,
+      "name": "Blue-hour café",
+      "prompt": "Create Veya hero variation 5, Blue-hour café, based on the attached reference photo. Same relaxed couple in ivory and sage sharing a smartphone at a wooden cafe table on right, but at early blue hour overlooking the Bosphorus. Large window behind them shows expansive deep blue strait with distant warm shoreline lights and a subtle distant Bosphorus suspension bridge. Soft warm pendant light illuminates faces and tea glass without becoming orange. Left half softly shadowed deep aubergine cafe wall, clean negative space. Editorial analog photography, romantic quiet everyday mood, realistic exposure, no neon, no Galata Tower. Subjects and water both readable, not an excessively dark night scene. Keep the natural candid interaction and tactile premium photography. Composition: subjects on right, broad visible Bosphorus background, spacious left text-safe area. 3:2 landscape high resolution, opaque. No text, logo, watermark, visible readable phone UI or currency symbols. Anatomically natural hands. Photographic image only, not website screenshot.",
+      "source": "/Users/mehmetsemihbabacan/.codex/generated_images/01a0a013-3bbd-7901-b72e-71f5a4cd208d/exec-3b534a00-15b8-435e-9601-35f2e9dab46d.png"
+    }
+  ]
+}

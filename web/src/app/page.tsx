@@ -1,212 +1,59 @@
-"use client";
-import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
-import { AdStatus, ReservationStatus } from "@/contracts/escrow";
-import { listAds, listReservations, getConfig, explainError, quoteKurus, tokensForKurus, type Ad, type EscrowConfig, type Reservation } from "@/lib/escrow";
-import { fmtToken, fmtTRY, fmtDate, short } from "@/lib/format";
-import { TOKENS, tokenByAddress } from "@/lib/tokens";
-import { Alert, Button, Empty, Skeleton } from "@/components/ui";
-import { config, contractUrl } from "@/lib/config";
-import { anchorConfigured, indicativePrice } from "@/lib/anchor";
+import { VeyaMotion } from "@/components/VeyaMotion";
 
-export default function Market() {
-  const [ads, setAds] = useState<Ad[] | null>(null);
-  const [cfg, setCfg] = useState<EscrowConfig | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [token, setToken] = useState<string>("all");
-  const [trades, setTrades] = useState<Reservation[] | null>(null);
-  /** the licensed anchor's USDC price in TRY (USD/TRY oracle + spread): the number our makers compete with */
-  const [anchorPrice, setAnchorPrice] = useState<number | null>(null);
+const Arrow = () => <span aria-hidden="true">↗</span>;
+export default function Home() {
+  return <VeyaMotion>
+    <section className="veya-hero" aria-labelledby="hero-title">
+      <Image src="/brand/bosphorus-options/option-1.webp" alt="A couple at a Bosphorus café table, one showing the other something on a phone, a ferry passing on the water behind them" fill unoptimized loading="eager" fetchPriority="high" sizes="100vw" className="hero-photo" />
+      <div className="hero-shade" />
+      <div className="hero-copy">
+        <p className="eyebrow">A familiar way forward</p>
+        <h1 id="hero-title">Your lira.<br />A world of<br /><em>possibility.</em></h1>
+        <p className="hero-description">Buy USDC or XLM from peers.<br />Pay with your Turkish bank account.</p>
+        <Link href="/market" className="veya-button pistachio">Explore Veya <Arrow /></Link>
+      </div>
+      <div className="hero-foot"><span>Made for the way you move.</span><span>Built on Stellar <span aria-hidden="true">↗</span></span></div>
+    </section>
 
-  useEffect(() => {
-    const load = () =>
-      listAds().then(
-        (list) => {
-          setAds(list);
-          setErr(null);
-        },
-        (e) => {
-          setErr(explainError(e));
-          setAds([]);
-        },
-      );
-    load();
-    getConfig().then(setCfg).catch(() => {});
-    // settled reservations = completed trades; each one carries a verified proof on-chain
-    const loadTrades = () => listReservations(100).then((rs) => setTrades(rs.filter((r) => r.status === ReservationStatus.Settled).slice(0, 6))).catch(() => setTrades([]));
-    loadTrades();
-    if (anchorConfigured()) indicativePrice("buy", "100").then((p) => setAnchorPrice(Number(p.price))).catch(() => {});
-    const t = setInterval(() => { load(); loadTrades(); }, 15_000);
-    return () => clearInterval(t);
-  }, []);
+    <div className="veya-rail"><span>Turkish lira in.</span><span className="rail-line" /><span>USDC or XLM out.</span><span className="rail-note">One peer-to-peer exchange.</span></div>
 
-  const tradeable = (a: Ad) => a.status === AdStatus.Active && a.remaining >= tokensForKurus(a.min_try_kurus, a.price_kurus, a.decimals) && a.remaining > 0n;
-  const rows = (ads ?? [])
-    .filter((a) => tradeable(a) && (token === "all" || a.token === token))
-    .sort((x, y) => (x.price_kurus < y.price_kurus ? -1 : x.price_kurus > y.price_kurus ? 1 : 0));
+    <section className="veya-intro section-width" data-reveal>
+      <p className="eyebrow">Your bank. Your wallet.</p>
+      <h2>A little more<br />within reach.</h2>
+      <p>From the account you know<br />to the wallet you own.</p>
+    </section>
 
-  return (
-    <div className="space-y-8">
-      <section className="grid gap-6 md:grid-cols-[1.4fr_1fr] md:items-end">
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight">Buy XLM or USDC with a Turkish bank transfer. Peer to peer.</h1>
-          <p className="mt-3 max-w-xl text-muted">
-            Makers post ads with a price and their liquidity in a Soroban escrow. Pick an ad, reserve any amount within its limits, pay the maker by FAST,
-            and prove the payment from your bank&apos;s own signed receipt e-mail (Ziraat or VakıfBank) with a zero-knowledge proof. The escrow pays you out in about a minute.
-          </p>
-          <div className="mt-5 flex gap-3">
-            <Link href="/sell">
-              <Button>Post an ad</Button>
-            </Link>
-            <Link href="/how-it-works">
-              <Button variant="ghost">How it works</Button>
-            </Link>
-          </div>
+    <section className="veya-story section-width" aria-label="How Veya works">
+      <article className="story-panel story-choose" data-reveal>
+        <div className="story-copy"><span className="step-number">01 / CHOOSE</span><h2>Find your<br />starting point.</h2><p>Choose a peer’s offer.<br />See the price before you reserve.</p><Link className="veya-button ivory" href="/market">Find an offer <Arrow /></Link></div>
+        <div className="exchange-art" aria-label="Illustration of Turkish lira exchanged for digital currency">
+          <div className="currency-disc lira">₺</div><div className="exchange-path" aria-hidden="true">↗</div><div className="currency-disc dollar">$</div><span className="art-caption">TRY → USDC / XLM</span>
         </div>
-        <div className="rounded-2xl border border-line bg-panel p-4 text-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Rules of the market</p>
-          <ul className="mt-2 space-y-1.5 text-muted">
-            <li>• A reservation holds the maker&apos;s tokens for {cfg ? Number(cfg.lock_duration) / 60 : 60} min at the quoted price.</li>
-            <li>• Declare your payment and the maker cannot withdraw for {cfg ? Number(cfg.proof_window) / 60 : 120} min; their {cfg ? Number(cfg.bond_bps) / 100 : 5}% bond backs you after that.</li>
-            <li>• Makers&apos; bank details are encrypted on-chain and shown only to you after you reserve.</li>
-            <li>• Fee {cfg ? Number(cfg.fee_bps) / 100 : 0.25}% of the tokens you receive. No custody, no middleman.</li>
-          </ul>
-          {config.escrowId && (
-            <a className="mt-3 block text-xs underline decoration-dotted" href={contractUrl(config.escrowId)} target="_blank" rel="noreferrer">
-              Escrow contract on stellar.expert ↗
-            </a>
-          )}
-          <p className="mt-2 text-xs text-muted">
-            Testnet: fund a wallet at <a className="underline decoration-dotted" href="https://lab.stellar.org/account/fund?$=network$id=testnet" target="_blank" rel="noreferrer">Stellar Lab (Friendbot)</a>. Paying by FAST needs a Ziraat or VakıfBank account; without one, browse the market and open a recent trade to see a settled proof.
-          </p>
-        </div>
-      </section>
+      </article>
+      <article className="story-panel story-transfer" data-reveal>
+        <div className="story-copy"><span className="step-number">02 / TRANSFER</span><h2>Same bank.<br />New possibilities.</h2><p>Pay the seller by FAST from Ziraat<br />or VakıfBank. Keep the receipt email.</p><Link className="text-link" href="/how-it-works">See how it works <Arrow /></Link></div>
+        <div className="receipt-scene"><div className="receipt"><span className="receipt-top">BANK TRANSFER <span aria-hidden="true">↗</span></span><span className="receipt-symbol">₺</span><strong>One familiar step.</strong><span>From your bank to your peer.</span><div className="receipt-rule" /><span className="receipt-bottom">FAST <span>Payment receipt</span></span></div><span className="art-caption">An illustration of the payment step</span></div>
+      </article>
+      <article className="story-panel story-receive" data-reveal>
+        <div className="story-copy"><span className="step-number">03 / VERIFY & RECEIVE</span><h2>Proof in.<br />Crypto out.</h2><p>Upload the original receipt email.<br />Verify your payment, then claim<br />your crypto to your wallet.</p><Link className="veya-button pistachio" href="/market">Take a look <Arrow /></Link></div>
+        <div className="proof-art"><div className="proof-orbit"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M25 51 43 69 77 32" fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></svg></div><span>Verified. Ready for your wallet.</span></div>
+      </article>
+    </section>
 
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Buy</h2>
-          <div className="flex gap-1 rounded-xl border border-line p-1 text-xs">
-            {[{ address: "all", symbol: "All" }, ...TOKENS].map((t) => (
-              <button key={t.address} onClick={() => setToken(t.address)} className={`rounded-lg px-3 py-1 ${token === t.address ? "bg-panel-2 font-semibold" : "text-muted"}`}>
-                {t.symbol}
-              </button>
-            ))}
-          </div>
-        </div>
-        {err && <Alert kind="error">{err}</Alert>}
-        {!config.escrowId && <Alert kind="warn">Escrow contract id is not configured (NEXT_PUBLIC_ESCROW_ID).</Alert>}
-        {ads === null ? (
-          <div className="rounded-2xl border border-line p-5"><Skeleton lines={4} /></div>
-        ) : rows.length === 0 ? (
-          <Empty title="No ads with liquidity right now">
-            Be the first maker: <Link className="underline" href="/sell">post an ad</Link>.
-          </Empty>
-        ) : (
-          <>
-            {/* phones: one card per ad */}
-            <ul className="space-y-3 sm:hidden">
-              {rows.map((a) => {
-                const t = tokenByAddress(a.token);
-                return (
-                  <li key={a.id.toString()} className="rounded-2xl border border-line bg-panel p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{a.nickname || short(a.seller, 5)}</p>
-                        <p className="text-xs text-muted">{a.settled_count} trades · {a.active_reservations} active</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-semibold">{fmtTRY(a.price_kurus)}</p>
-                        <p className="text-xs text-muted">per {t.symbol}</p>
-                      </div>
-                    </div>
-                    <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                      <div><dt className="text-xs text-muted">Available</dt><dd>{fmtToken(a.remaining, a.decimals)} {t.symbol}</dd></div>
-                      <div><dt className="text-xs text-muted">Per trade</dt><dd>{fmtTRY(a.min_try_kurus)} – {fmtTRY(a.max_try_kurus)}</dd></div>
-                    </dl>
-                    <Link href={`/ads/${a.id}`} className="mt-3 block">
-                      <Button className="w-full">Buy {t.symbol}</Button>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="hidden overflow-x-auto rounded-2xl border border-line sm:block">
-            <table className="w-full text-sm">
-              <thead className="bg-panel-2 text-left text-xs uppercase tracking-wide text-muted">
-                <tr>
-                  <th className="px-4 py-3">Maker</th>
-                  <th className="px-4 py-3">Price</th>
-                  <th className="px-4 py-3">Available</th>
-                  <th className="px-4 py-3">Limits</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a) => {
-                  const t = tokenByAddress(a.token);
-                  return (
-                    <tr key={a.id.toString()} className="border-t border-line hover:bg-panel-2/60">
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{a.nickname || short(a.seller, 5)}</p>
-                        <p className="text-xs text-muted">
-                          {a.settled_count} trades · {a.active_reservations} active · <span className="mono">{short(a.seller, 4)}</span>
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-base font-semibold">{fmtTRY(a.price_kurus)}</p>
-                        <p className="text-xs text-muted">
-                          per {t.symbol}
-                          {anchorPrice !== null && t.symbol === "USDC" && (() => { const pct = ((anchorPrice * 100 - Number(a.price_kurus)) / (anchorPrice * 100)) * 100; return <span className={`ml-1 ${pct >= 0 ? "text-ok" : "text-warn"}`}>· {pct >= 0 ? `${pct.toFixed(1)}% below anchor` : `${(-pct).toFixed(1)}% above anchor`}</span>; })()}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{fmtToken(a.remaining, a.decimals)} {t.symbol}</p>
-                        <p className="text-xs text-muted">≈ {fmtTRY(quoteKurus(a.remaining, a.price_kurus, a.decimals))}</p>
-                      </td>
-                      <td className="px-4 py-3 text-muted">
-                        {fmtTRY(a.min_try_kurus)} – {fmtTRY(a.max_try_kurus)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link href={`/ads/${a.id}`}>
-                          <Button>Buy {t.symbol}</Button>
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-      </section>
+    <section className="veya-trust section-width" data-reveal>
+      <div><p className="eyebrow">Built around the exchange</p><h2>Less guesswork.<br />More clarity.</h2></div>
+      <div className="trust-details"><div><span>01</span><h3>Crypto held for the trade.</h3><p>The seller’s tokens stay in a smart contract while the trade is reserved.</p></div><div><span>02</span><h3>A receipt you can verify.</h3><p>Settlement uses proof of the bank’s signed email, rather than a screenshot.</p></div><Link className="text-link" href="/how-it-works">Understand the safeguards and limits <Arrow /></Link></div>
+    </section>
 
-      {/* completed trades: for visitors who cannot pay by FAST themselves, this is the proof that the loop closes */}
-      {trades && trades.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex items-end justify-between gap-3">
-            <h2 className="text-xl font-semibold">Recent trades</h2>
-            <p className="text-xs text-muted">Each settled with a zero-knowledge proof of the bank transfer, verified on-chain.</p>
-          </div>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {trades.map((r) => {
-              const ad = (ads ?? []).find((a) => a.id === r.ad_id);
-              const t = ad ? tokenByAddress(ad.token) : null;
-              return (
-                <li key={r.id.toString()}>
-                  <Link href={`/r/${r.id}`} className="block rounded-2xl border border-line bg-panel p-4 hover:bg-panel-2/60">
-                    <p className="font-semibold">{fmtTRY(r.try_amount_kurus)} → {ad && t ? `${fmtToken(r.amount, ad.decimals)} ${t.symbol}` : "…"}</p>
-                    <p className="mt-1 text-xs text-muted">
-                      {ad?.nickname || (ad ? short(ad.seller, 4) : "maker")} → <span className="mono">{short(r.buyer, 4)}</span> · settled {fmtDate(r.settled_at)}
-                    </p>
-                    <p className="mt-2 text-xs text-accent">View the trade →</p>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-    </div>
-  );
+    <section className="veya-faq section-width" data-reveal><h2>A few good questions.</h2><div>
+      <details><summary>What do I need to get started?<span>+</span></summary><p>A supported Stellar wallet, and a Ziraat or VakıfBank account for the FAST payment. You’ll upload the original receipt email as an .eml file.</p></details>
+      <details><summary>Is Veya live?<span>+</span></summary><p>Veya is currently on Stellar testnet. The crypto is testnet crypto, with no monetary value. Bank transfers use real lira, so read the trade instructions before paying.</p></details>
+      <details><summary>Who can see my receipt?<span>+</span></summary><p>The proving service processes the original email. The receipt itself is not published on-chain. The operator still has responsibilities and control; see How it works for the current trust model.</p></details>
+    </div></section>
+
+    <section className="veya-close" data-reveal><p className="eyebrow">A new way, starting here.</p><h2>Meet your<br />next move.</h2><Link className="veya-button pistachio" href="/market">Explore the testnet <Arrow /></Link><p className="testnet-note">Stellar testnet · Test tokens, real bank transfers.</p><div className="closing-wordmark" aria-hidden="true">veya<span>↗</span></div></section>
+    <footer className="veya-footer"><Link href="/" className="veya-wordmark">veya</Link><span>From Türkiye. Built on Stellar.</span><div><Link href="/market">Market</Link><Link href="/sell">Sell crypto</Link><Link href="/how-it-works">How it works</Link></div><span className="footer-small">Veya is an experimental peer-to-peer interface. Operator and smart-contract risks apply.</span></footer>
+  </VeyaMotion>;
 }

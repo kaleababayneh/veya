@@ -13,7 +13,7 @@ export default function HowItWorks() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">How zkOTC works</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">How Veya works</h1>
         <p className="mt-2 text-muted">
           A peer-to-peer market like Binance P2P, without the platform holding anyone&apos;s money or judging disputes. No oracle, no custodian, no
           screenshots: the evidence is the bank&apos;s own cryptographic signature on the transfer receipt e-mail, checked inside a zero-knowledge proof
@@ -33,7 +33,7 @@ export default function HowItWorks() {
         <p className="font-semibold">Two rails to the same balance</p>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="text-muted"><tr><th className="py-1 pr-4"></th><th className="py-1 pr-4">Peer market (zkOTC)</th><th className="py-1">Licensed anchor (SEP-6)</th></tr></thead>
+            <thead className="text-muted"><tr><th className="py-1 pr-4"></th><th className="py-1 pr-4">Peer market (Veya)</th><th className="py-1">Licensed anchor (SEP-6)</th></tr></thead>
             <tbody className="divide-y divide-line">
               <tr><td className="py-1 pr-4 text-muted">Who uses it</td><td className="py-1 pr-4">buyers</td><td className="py-1">makers, to refill USDC inventory or cash out</td></tr>
               <tr><td className="py-1 pr-4 text-muted">Identity</td><td className="py-1 pr-4">a wallet; no KYC</td><td className="py-1">KYC at the anchor (SEP-12)</td></tr>

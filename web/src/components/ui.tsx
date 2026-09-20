@@ -1,4 +1,5 @@
 "use client";
+import { useI18n } from "@/lib/i18n";
 import React from "react";
 import Link from "next/link";
 import { AdStatus, ReservationStatus } from "@/contracts/escrow";
@@ -55,14 +56,16 @@ export function Badge({ tone, children }: { tone: "ok" | "warn" | "accent" | "mu
 }
 
 export function ReservationBadge({ status, expired, claimOpen }: { status: ReservationStatus; expired?: boolean; claimOpen?: boolean }) {
-  if (status === ReservationStatus.Active) return <Badge tone={expired ? "danger" : "warn"}>{expired ? "Reserved · timer ended" : "Reserved"}</Badge>;
-  if (status === ReservationStatus.Settled) return <Badge tone="accent">Completed</Badge>;
-  return <Badge tone={claimOpen ? "danger" : "muted"}>{claimOpen ? "Released · bond claim open" : "Released"}</Badge>;
+  const { t } = useI18n();
+  if (status === ReservationStatus.Active) return <Badge tone={expired ? "danger" : "warn"}>{expired ? t("Reserved · timer ended") : t("Reserved")}</Badge>;
+  if (status === ReservationStatus.Settled) return <Badge tone="accent">{t("Completed")}</Badge>;
+  return <Badge tone={claimOpen ? "danger" : "muted"}>{claimOpen ? t("Released · bond claim open") : t("Released")}</Badge>;
 }
 
 export function AdBadge({ status, soldOut }: { status: AdStatus; soldOut?: boolean }) {
-  if (status === AdStatus.Closed) return <Badge tone="muted">Closed</Badge>;
-  return <Badge tone={soldOut ? "warn" : "ok"}>{soldOut ? "Fully reserved" : "Active"}</Badge>;
+  const { t } = useI18n();
+  if (status === AdStatus.Closed) return <Badge tone="muted">{t("Closed")}</Badge>;
+  return <Badge tone={soldOut ? "warn" : "ok"}>{soldOut ? t("Fully reserved") : t("Active")}</Badge>;
 }
 
 export function Alert({ kind = "info", children }: { kind?: "info" | "warn" | "error" | "ok"; children: React.ReactNode }) {
@@ -123,10 +126,12 @@ export function Steps({ current, steps }: { current: number; steps: string[] }) 
   );
 }
 
-export function BackLink({ href = "/", children = "← Market" }: { href?: string; children?: React.ReactNode }) {
+export function BackLink({ href = "/market", children }: { href?: string; children?: React.ReactNode }) {
+  const { t } = useI18n();
+  const label = children ?? t("← Market");
   return (
     <Link href={href} className="text-sm text-muted hover:text-fg">
-      {children}
+      {label}
     </Link>
   );
 }

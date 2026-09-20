@@ -1,13 +1,28 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { WalletProvider } from "@/lib/wallet";
-import { Nav } from "@/components/Nav";
+import { AppFrame } from "@/components/AppFrame";
 import { ToastProvider } from "@/components/Toast";
 import { I18nProvider } from "@/lib/i18n";
 
+const title = "Veya: Buy crypto with Turkish bank transfers";
+const description = "Buy USDC or XLM directly from peers using a Turkish bank transfer. Verify your bank receipt and receive crypto in your wallet. Currently on Stellar testnet.";
+
 export const metadata: Metadata = {
-  title: "zkOTC — P2P TRY ⇄ XLM/USDC with proof of bank payment",
-  description: "Peer-to-peer OTC on Stellar. Sellers escrow crypto, buyers pay TRY by FAST and unlock it with a zero-knowledge proof of the bank's signed receipt e-mail (Ziraat, VakıfBank) for the transfer.",
+  applicationName: "Veya",
+  title,
+  description,
+  openGraph: {
+    type: "website",
+    siteName: "Veya",
+    title,
+    description,
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary",
+    title,
+    description,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -16,11 +31,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen antialiased">
         <I18nProvider>
           <ToastProvider>
-            <WalletProvider>
-              <Nav />
-              <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
-              <footer className="py-10" />
-            </WalletProvider>
+            <a className="skip-link" href="#main-content">Skip to content</a>
+            <AppFrame>{children}</AppFrame>
           </ToastProvider>
         </I18nProvider>
       </body>

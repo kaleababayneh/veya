@@ -353,7 +353,7 @@ export default function AnchorPage() {
       )}
 
       <p className="text-xs text-muted">
-        Buying, not making? <Link className="underline" href="/">The peer market</Link> is the door for you: pay a maker by FAST and settle with a proof of your bank receipt, no KYC.
+        Buying, not making? <Link className="underline" href="/market">The peer market</Link> is the door for you: pay a maker by FAST and settle with a proof of your bank receipt, no KYC.
         Got USDC now? <Link className="underline" href="/sell">Post an ad</Link> priced under the anchor&apos;s rate and let buyers come to you.
       </p>
     </div>

@@ -65,7 +65,7 @@ export default function Me() {
       {err && <Alert kind="error">{err}</Alert>}
       <section>
         <h2 className="mb-3 text-lg font-semibold">My purchases</h2>
-        {buying.length === 0 ? <Empty title="No reservations yet"><Link className="underline" href="/">Pick an ad in the market</Link>.</Empty> : <ul className="divide-y divide-line rounded-2xl border border-line">{buying.map((r) => <ReservationRow key={r.id.toString()} r={r} />)}</ul>}
+        {buying.length === 0 ? <Empty title="No reservations yet"><Link className="underline" href="/market">Pick an ad in the market</Link>.</Empty> : <ul className="divide-y divide-line rounded-2xl border border-line">{buying.map((r) => <ReservationRow key={r.id.toString()} r={r} />)}</ul>}
       </section>
       <section>
         <h2 className="mb-3 text-lg font-semibold">My ads</h2>

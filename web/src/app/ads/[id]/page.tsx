@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AdStatus, ReservationStatus } from "@/contracts/escrow";
 import { useWallet } from "@/lib/wallet";
+import { useI18n } from "@/lib/i18n";
 import {
   escrow, getAd, getConfig, listReservations, send, unwrapResult, explainError, ERROR_HELP, quoteKurus, tokensForKurus, reservationLabel,
   type Ad, type Reservation, type EscrowConfig,
@@ -16,6 +17,7 @@ import { AdBadge, Alert, BackLink, Button, Card, Field, inputCls, Spinner, TxLin
 
 export default function AdPage() {
   const { id: idParam } = useParams<{ id: string }>();
+  const { t: tr } = useI18n();
   const id = useMemo(() => BigInt(idParam), [idParam]);
   const router = useRouter();
   const { address, connect, signTransaction, signMessage } = useWallet();
@@ -111,14 +113,14 @@ export default function AdPage() {
       <BackLink />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted">Ad #{ad.id.toString()} · {ad.nickname || "maker"} <span className="mono">{short(ad.seller, 5)}</span>{isSeller && " (you)"}</p>
+          <p className="text-sm text-muted">{tr("Ad")} #{ad.id.toString()} · {ad.nickname || tr("maker")} <span className="mono">{short(ad.seller, 5)}</span>{isSeller && " (you)"}</p>
           <h1 className="text-3xl font-semibold tracking-tight">
-            {t.symbol} at {fmtTRY(ad.price_kurus)} <span className="text-base font-medium text-muted">per {t.symbol}</span>
+            {t.symbol} · {fmtTRY(ad.price_kurus)} <span className="text-base font-medium text-muted">{tr("per")} {t.symbol}</span>
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {fmtToken(ad.remaining, ad.decimals)} {t.symbol} available (≈ {fmtTRY(quoteKurus(ad.remaining, ad.price_kurus, ad.decimals))}) · limits {fmtTRY(ad.min_try_kurus)} – {fmtTRY(ad.max_try_kurus)} per trade ·{" "}
-            {ad.settled_count} trades completed
-            {ad.expires_at !== 0n && ` · until ${fmtDate(ad.expires_at)}`}
+            {fmtToken(ad.remaining, ad.decimals)} {t.symbol} {tr("available")} (≈ {fmtTRY(quoteKurus(ad.remaining, ad.price_kurus, ad.decimals))}) · {tr("limits")} {fmtTRY(ad.min_try_kurus)} – {fmtTRY(ad.max_try_kurus)} {tr("per trade")} ·{" "}
+            {ad.settled_count} {tr("trades completed")}
+            {ad.expires_at !== 0n && ` · ${tr("until")} ${fmtDate(ad.expires_at)}`}
           </p>
         </div>
         <AdBadge status={ad.status} soldOut={soldOut} />
@@ -195,12 +197,12 @@ export default function AdPage() {
       )}
 
       <Card>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">How a trade works here</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{tr("How a trade works here")}</h3>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted">
-          <li>Reserve an amount: the tokens are held for you for {cfg ? Number(cfg.lock_duration) / 60 : 60} minutes at today&apos;s price.</li>
-          <li>The maker&apos;s IBAN and name are revealed to you only after reserving (they are encrypted on-chain). Pay by FAST from Ziraat with the payment reference in the description.</li>
-          <li>Declare the payment: the maker cannot withdraw for {cfg ? Number(cfg.proof_window) / 60 : 120} minutes, and their bond backs you afterwards.</li>
-          <li>Upload the e-dekont e-mail, get a proof in ~15 s, claim your {t.symbol} (fee {feeBps / 100}%).</li>
+          <li>{tr("Reserve an amount: the tokens are held for you for")} {cfg ? Number(cfg.lock_duration) / 60 : 60} {tr("minutes at today's price.")}</li>
+          <li>{tr("The maker's IBAN and name are revealed to you only after reserving (they are encrypted on-chain). Pay by FAST from Ziraat with the payment reference in the description.")}</li>
+          <li>{tr("Declare the payment: the maker cannot withdraw for")} {cfg ? Number(cfg.proof_window) / 60 : 120} {tr("minutes, and their bond backs you afterwards.")}</li>
+          <li>{tr("Upload the e-dekont e-mail, get a proof in ~15 s, claim your")} {t.symbol} {tr("(fee")} {feeBps / 100}%).</li>
         </ol>
         <p className="mt-3 text-xs text-muted">
           Maker <a className="underline decoration-dotted" href={accountUrl(ad.seller)} target="_blank" rel="noreferrer">{ad.seller}</a>
@@ -211,6 +213,7 @@ export default function AdPage() {
 }
 
 function QuotePanel({ ad, feeBps, address, busy, onReserve }: { ad: Ad; feeBps: number; address: string | null; busy: string | null; onReserve: (amount: bigint) => Promise<void> }) {
+  const { t: tr } = useI18n();
   const t = tokenByAddress(ad.token);
   const [tryStr, setTryStr] = useState("");
   const [tokStr, setTokStr] = useState("");
@@ -260,35 +263,35 @@ function QuotePanel({ ad, feeBps, address, busy, onReserve }: { ad: Ad; feeBps: 
 
   return (
     <Card className="space-y-4">
-      <h2 className="font-semibold">Buy {t.symbol} from {ad.nickname || short(ad.seller, 5)}</h2>
+      <h2 className="font-semibold">{tr("Buy {sym} from {maker}").replace("{sym}", t.symbol).replace("{maker}", ad.nickname || short(ad.seller, 5))}</h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="You pay (TRY by FAST)">
+        <Field label={tr("You pay (TRY by FAST)")}>
           <input className={`${inputCls} text-lg`} value={tryStr} onChange={(e) => onTry(e.target.value)} placeholder="1.000,00" inputMode="decimal" />
         </Field>
-        <Field label={`You reserve (${t.symbol})`}>
+        <Field label={`${tr("You reserve")} (${t.symbol})`}>
           <input className={`${inputCls} text-lg`} value={tokStr} onChange={(e) => onTok(e.target.value)} placeholder="25" inputMode="decimal" />
         </Field>
       </div>
       <div className="flex flex-wrap gap-2 text-xs">
-        <button type="button" className="rounded-full border border-line px-3 py-1 hover:bg-panel-2" onClick={() => quick(ad.min_try_kurus)}>min {fmtTRY(ad.min_try_kurus)}</button>
+        <button type="button" className="rounded-full border border-line px-3 py-1 hover:bg-panel-2" onClick={() => quick(ad.min_try_kurus)}>{tr("min")} {fmtTRY(ad.min_try_kurus)}</button>
         {[50_000n, 100_000n, 250_000n].filter((k) => k > ad.min_try_kurus && k < maxK).map((k) => (
           <button key={k.toString()} type="button" className="rounded-full border border-line px-3 py-1 hover:bg-panel-2" onClick={() => quick(k)}>{fmtTRY(k)}</button>
         ))}
-        <button type="button" className="rounded-full border border-line px-3 py-1 hover:bg-panel-2" onClick={() => quick(maxK)}>max {fmtTRY(maxK)}</button>
+        <button type="button" className="rounded-full border border-line px-3 py-1 hover:bg-panel-2" onClick={() => quick(maxK)}>{tr("max")} {fmtTRY(maxK)}</button>
       </div>
       {problem && <Alert kind="warn">{problem}</Alert>}
       {ok && (
         <div className="rounded-xl bg-panel-2 p-4 text-sm">
-          <div className="flex justify-between"><span className="text-muted">Price</span><span>{fmtTRY(ad.price_kurus)} / {t.symbol}</span></div>
-          <div className="flex justify-between"><span className="text-muted">You send by FAST</span><span className="font-semibold">{fmtTRY(q)}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Protocol fee ({feeBps / 100}%)</span><span>−{fmtToken(amount - receive, ad.decimals)} {t.symbol}</span></div>
-          <div className="flex justify-between border-t border-line pt-2 mt-2"><span className="text-muted">You receive</span><span className="text-base font-semibold">{fmtToken(receive, ad.decimals)} {t.symbol}</span></div>
+          <div className="flex justify-between"><span className="text-muted">{tr("Price")}</span><span>{fmtTRY(ad.price_kurus)} / {t.symbol}</span></div>
+          <div className="flex justify-between"><span className="text-muted">{tr("You send by FAST")}</span><span className="font-semibold">{fmtTRY(q)}</span></div>
+          <div className="flex justify-between"><span className="text-muted">{tr("Protocol fee")} ({feeBps / 100}%)</span><span>−{fmtToken(amount - receive, ad.decimals)} {t.symbol}</span></div>
+          <div className="flex justify-between border-t border-line pt-2 mt-2"><span className="text-muted">{tr("You receive")}</span><span className="text-base font-semibold">{fmtToken(receive, ad.decimals)} {t.symbol}</span></div>
         </div>
       )}
       <Button className="w-full" onClick={() => onReserve(amount)} disabled={!ok || !!busy}>
-        {busy === "Reserved" ? <><Spinner /> Confirm in wallet…</> : address ? (ok ? `Reserve ${fmtToken(amount, ad.decimals)} ${t.symbol} for ${fmtTRY(q)}` : "Enter an amount") : "Connect wallet to reserve"}
+        {busy === "Reserved" ? <><Spinner /> {tr("Confirm in wallet…")}</> : address ? (ok ? `${tr("Reserve")} ${fmtToken(amount, ad.decimals)} ${t.symbol} ${tr("for")} ${fmtTRY(q)}` : tr("Enter an amount")) : tr("Connect wallet to reserve")}
       </Button>
-      <p className="text-xs text-muted">Reserving is a Stellar transaction that holds the maker&apos;s tokens for you; no money moves until you pay the maker.</p>
+      <p className="text-xs text-muted">{tr("Reserving is a Stellar transaction that holds the maker's tokens for you; no money moves until you pay the maker.")}</p>
     </Card>
   );
 }

@@ -155,19 +155,19 @@ export default function ReservationPage() {
       <BackLink href={`/ads/${ad.id}`}>← Ad #{ad.id.toString()}</BackLink>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted">Reservation #{r.id.toString()} · from {ad.nickname || short(ad.seller, 5)}</p>
+          <p className="text-sm text-muted">{tr("Reservation")} #{r.id.toString()} · {tr("from")} {ad.nickname || short(ad.seller, 5)}</p>
           <h1 className="text-3xl font-semibold tracking-tight">
-            {isBuyer ? "You get " : ""}{fmtToken(payout, ad.decimals)} {t.symbol} <span className="text-muted">for</span> {fmtTRY(r.try_amount_kurus)}
+            {isBuyer ? `${tr("You get")} ` : ""}{fmtToken(payout, ad.decimals)} {t.symbol} <span className="text-muted">{tr("for")}</span> {fmtTRY(r.try_amount_kurus)}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {fmtTRY(ad.price_kurus)} per {t.symbol}{!isBuyer && <> · buyer <span className="mono">{short(r.buyer, 5)}</span></>} · reserved {fmtDate(r.created_at)}
+            {fmtTRY(ad.price_kurus)} {tr("per")} {t.symbol}{!isBuyer && <> · {tr("buyer")} <span className="mono">{short(r.buyer, 5)}</span></>} · {tr("reserved")} {fmtDate(r.created_at)}
           </p>
         </div>
         <div className="text-right">
           <ReservationBadge status={r.status} expired={expired} claimOpen={claimOpen} />
           {active && (
             <p className="mt-2 text-sm text-muted">
-              {declared ? "Protected for " : "Reservation ends in "}
+              {declared ? `${tr("Protected for")} ` : `${tr("Reservation ends in")} `}
               <Countdown until={Number(r.lock_expires_at)} className="text-base" />
             </p>
           )}
@@ -218,7 +218,7 @@ export default function ReservationPage() {
 
       {r.status === ReservationStatus.Settled && (
         <Alert kind="ok">
-          Completed on {fmtDate(r.settled_at)}: {fmtToken(payout, ad.decimals)} {t.symbol} went to {short(r.buyer, 6)}.
+          {tr("Completed on")} {fmtDate(r.settled_at)}: {fmtToken(payout, ad.decimals)} {t.symbol} {tr("went to")} {short(r.buyer, 6)}.
         </Alert>
       )}
       {r.status === ReservationStatus.Released && !claimOpen && (
@@ -541,7 +541,7 @@ function BuyerFlow({
 
       {!bond && !paid && (
         <p className="text-xs text-muted">
-          Changed your mind and have <b>not</b> paid? <button className="underline" onClick={onRelease} disabled={!!busy}>Release the reservation</button> · <Link className="underline" href="/">Back to the market</Link>
+          Changed your mind and have <b>not</b> paid? <button className="underline" onClick={onRelease} disabled={!!busy}>Release the reservation</button> · <Link className="underline" href="/market">Back to the market</Link>
         </p>
       )}
       {!bond && paid && expired && !proved && (
