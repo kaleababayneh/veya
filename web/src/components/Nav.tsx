@@ -6,6 +6,8 @@ import { useI18n } from "@/lib/i18n";
 import { short } from "@/lib/format";
 import { Button } from "./ui";
 import { useCopy } from "./Product";
+import { ThemeToggle } from "./ThemeToggle";
+import { ArrowMark } from "@/components/ArrowMark";
 export function Nav() {
   const path = usePathname(),
     c = useCopy();
@@ -15,24 +17,25 @@ export function Nav() {
     <header className="product-nav">
       <div className="product-nav-top">
         <Link href="/" aria-label="Veya" className="veya-wordmark">
-          veya<span aria-hidden="true">↗</span>
+          veya<span aria-hidden="true"><ArrowMark /></span>
         </Link>
         <span className="product-testnet">TESTNET</span>
         <div className="product-wallet">
           <button
-            className="language-switch"
+            className="product-nav-tool language-switch"
             aria-label={c("Switch to Turkish", "İngilizceye geç")}
             onClick={() => setLang(lang === "en" ? "tr" : "en")}
           >
             {lang === "en" ? "TR" : "EN"}
           </button>
+          <ThemeToggle />
           {address ? (
             <Button
               variant="ghost"
               onClick={disconnect}
               title={c("Disconnect wallet", "Cüzdan bağlantısını kes")}
             >
-              {short(address, 4)} <span aria-hidden="true">↗</span>
+              {short(address, 4)} <span aria-hidden="true"><ArrowMark /></span>
             </Button>
           ) : (
             <Button onClick={connect} disabled={!ready || connecting}>

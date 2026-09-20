@@ -233,6 +233,9 @@ describe("buyer admission and amounts", () => {
       { ...ad, id: 2n, nickname: "Expired", expires_at: 1n },
     ]);
     mount(<Market />);
+    // XLM is the default asset; the mocked ad is USDC, so pick it in the asset dropdown
+    fireEvent.click(screen.getByLabelText("Asset to receive"));
+    fireEvent.click(await screen.findByRole("option", { name: "USDC" }));
     fireEvent.change(screen.getByLabelText("Amount in Turkish lira"), {
       target: { value: "1000" },
     });
@@ -409,9 +412,9 @@ describe("seller and activity", () => {
   });
   it("refreshes activity on focus and changes primary action from confirmed state", async () => {
     mount(<Activity />);
-    await screen.findByText("Continue payment ↗");
+    await screen.findByText("Continue payment");
     r.paid_declared_at = r.created_at;
     await act(async () => window.dispatchEvent(new Event("focus")));
-    await screen.findByText("Verify receipt ↗");
+    await screen.findByText("Verify receipt");
   });
 });

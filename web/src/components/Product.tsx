@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
+import { ArrowMark } from "@/components/ArrowMark";
 export function useCopy() {
   const { lang } = useI18n();
   return (en: string, tr: string) => (lang === "tr" ? tr : en);
@@ -69,7 +70,7 @@ export function FundingLink() {
   const c = useCopy();
   return (
     <Link className="product-text-link" href="/anchor">
-      {c("Fund or withdraw USDC", "USDC yatırın veya çekin")} ↗
+      {c("Fund or withdraw USDC", "USDC yatırın veya çekin")} <ArrowMark />
     </Link>
   );
 }

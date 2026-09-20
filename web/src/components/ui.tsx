@@ -4,9 +4,10 @@ import React from "react";
 import Link from "next/link";
 import { AdStatus, ReservationStatus } from "@/contracts/escrow";
 import { txUrl } from "@/lib/config";
+import { ArrowMark } from "@/components/ArrowMark";
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-2xl border border-line bg-panel p-5 shadow-sm ${className}`}>{children}</div>;
+  return <div className={`ui-card p-5 ${className}`}>{children}</div>;
 }
 
 export function Button({
@@ -15,16 +16,11 @@ export function Button({
   className = "",
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
-  const v =
-    variant === "primary"
-      ? "bg-accent text-accent-fg hover:brightness-110"
-      : variant === "danger"
-        ? "bg-danger/10 text-danger border border-danger/40 hover:bg-danger/20"
-        : "border border-line hover:bg-panel-2";
+  const v = variant === "primary" ? "btn-primary" : variant === "danger" ? "btn-danger" : "btn-ghost";
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${v} ${className}`}
+      className={`btn inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${v} ${className}`}
     >
       {children}
     </button>
@@ -42,7 +38,7 @@ export function Field({ label, hint, children }: { label: string; hint?: string;
 }
 
 export const inputCls =
-  "w-full rounded-xl border border-line bg-bg px-3 py-2.5 text-sm outline-none ring-accent/40 focus:ring-2 placeholder:text-muted/70";
+  "field-input w-full px-3.5 py-2.5 text-sm";
 
 export function Badge({ tone, children }: { tone: "ok" | "warn" | "accent" | "muted" | "danger"; children: React.ReactNode }) {
   const map = {
@@ -83,7 +79,7 @@ export function TxLink({ hash, label = "View transaction" }: { hash: string; lab
   if (!hash) return null;
   return (
     <a className="underline decoration-dotted underline-offset-4 hover:text-accent" href={txUrl(hash)} target="_blank" rel="noreferrer">
-      {t(label)} ↗
+      {t(label)} <ArrowMark />
     </a>
   );
 }

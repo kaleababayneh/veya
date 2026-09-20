@@ -1,53 +1,115 @@
-/* Veya product workspace: shared brand, deliberate transaction density. */
+/* Veya product workspace: shared brand, deliberate transaction density.
+   Surfaces, type and motion follow Lumenia's interface system (MIT) — see THIRD_PARTY_NOTICES.md. */
 .product-app {
   min-height: 100svh;
-  background: var(--color-bg);
+  /* a periwinkle bloom off the top edge, then plain paper */
+  background:
+    radial-gradient(78% 100% at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 62%) top / 100% 520px no-repeat,
+    var(--color-bg);
   color: var(--color-fg);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
+.product-app :where(h1, h2, .section-title, .readiness-panel h3, .activity-row h3, .help-step h2) {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+/* one frosted row: wordmark · testnet · places · tools; the row of places drops below on phones */
 .product-nav {
-  border-bottom: 1px solid var(--color-line);
-  padding: 24px max(24px, calc((100vw - 1200px) / 2)) 0;
-  background: var(--color-bg);
-}
-.product-nav-top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
+  /* lines the row up with .product-main's 1200px column and its 24px gutter */
+  padding: 10px max(24px, calc((100vw - 1200px) / 2 + 24px));
+  border-bottom: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-bg) 84%, transparent);
+  backdrop-filter: saturate(150%) blur(14px);
+  -webkit-backdrop-filter: saturate(150%) blur(14px);
+}
+.product-nav-top {
+  display: contents;
 }
 .product-nav .veya-wordmark {
-  font-size: 42px;
+  order: 1;
+  flex: none;
+  font-size: 34px;
+  letter-spacing: -3px;
+}
+.product-nav .veya-wordmark > span {
+  font-size: 21px;
+  transform: translateY(-3px);
 }
 .product-testnet {
-  font-size: 9px;
-  letter-spacing: 1.6px;
-  color: var(--color-muted);
+  order: 2;
+  flex: none;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 .product-wallet {
+  order: 4;
+  flex: none;
   display: flex;
-  gap: 12px;
+  gap: 6px;
   align-items: center;
   margin-left: auto;
 }
-.language-switch {
+.product-nav-tool {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--color-muted);
   font-size: 12px;
-  min-height: 42px;
-  padding: 8px;
+  font-weight: 600;
+  transition: color 0.18s, background 0.18s;
+}
+.product-nav-tool:hover {
+  color: var(--color-fg);
+  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
 }
 .product-nav nav {
+  order: 3;
   display: flex;
-  gap: 34px;
-  margin-top: 25px;
+  align-items: center;
+  gap: 2px;
+  margin-left: 18px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.product-nav nav::-webkit-scrollbar {
+  display: none;
 }
 .product-nav nav a {
-  padding: 12px 1px 17px;
+  flex: none;
+  padding: 8px 12px;
+  border-radius: 10px;
   font-size: 14px;
-  border-bottom: 2px solid transparent;
+  font-weight: 500;
+  white-space: nowrap;
   color: var(--color-muted);
+  transition: color 0.18s, background 0.18s;
+}
+.product-nav nav a:hover {
+  color: var(--color-fg);
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
 }
 .product-nav nav a.selected {
-  color: var(--color-fg);
-  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  font-weight: 600;
 }
 .product-main {
   max-width: 1200px;
@@ -67,17 +129,27 @@
   margin-bottom: 16px;
 }
 .product-heading h1 {
-  font-size: clamp(34px, 4vw, 54px);
-  font-weight: 600;
-  letter-spacing: -2.2px;
-  line-height: 1.08;
-  margin: 15px 0;
+  font-size: clamp(34px, 4.6vw, 58px);
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  margin: 14px 0 16px;
 }
 .product-eyebrow {
-  font-size: 10px;
-  letter-spacing: 1.7px;
-  color: var(--color-muted);
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  font-weight: 700;
+}
+.product-eyebrow::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
 }
 .product-description {
   color: var(--color-muted);
@@ -86,11 +158,14 @@
   line-height: 1.6;
 }
 .product-text-link {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 5px;
+  color: var(--color-accent);
+  text-underline-offset: 4px;
   cursor: pointer;
+}
+.product-text-link:hover {
+  text-decoration: underline;
 }
 .product-footer {
   max-width: 1152px;
@@ -103,7 +178,8 @@
 .buy-search {
   background: var(--color-panel);
   border: 1px solid var(--color-line);
-  border-radius: 24px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
   display: grid;
   grid-template-columns: 1.5fr 1fr 1fr;
   gap: 28px;
@@ -114,6 +190,7 @@
   align-items: center;
   gap: 12px;
   font-size: 30px;
+  font-variant-numeric: tabular-nums;
 }
 .amount-input input {
   min-width: 0;
@@ -150,11 +227,11 @@
 }
 .section-heading h2,
 .section-title {
-  font-size: 23px;
-  font-weight: 600;
-  letter-spacing: -0.6px;
+  font-size: 24px;
 }
 .section-heading h2 span {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
   font-size: 12px;
   color: var(--color-muted);
   margin-left: 8px;
@@ -162,9 +239,18 @@
 .offer-list,
 .activity-list {
   border: 1px solid var(--color-line);
-  border-radius: 22px;
+  border-radius: 20px;
   background: var(--color-panel);
+  box-shadow: var(--shadow-soft);
   overflow: hidden;
+}
+.offer-row,
+.activity-row {
+  transition: background 0.18s;
+}
+.offer-row:hover,
+.activity-row:hover {
+  background: color-mix(in srgb, var(--color-accent) 4%, transparent);
 }
 .offer-row {
   display: grid;
@@ -189,8 +275,10 @@
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: var(--color-panel-2);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   font-size: 17px;
+  font-weight: 600;
 }
 .offer-row h3 {
   font-size: 16px;
@@ -207,6 +295,7 @@
   font-size: 21px;
   font-weight: 600;
   margin-top: 6px;
+  font-variant-numeric: tabular-nums;
 }
 .offer-label {
   font-size: 10px;
@@ -216,13 +305,80 @@
 }
 .offer-cta {
   display: inline-flex;
+  align-items: center;
   justify-content: center;
-  padding: 13px 20px;
+  gap: 6px;
+  padding: 13px 22px;
   background: var(--color-accent);
   color: var(--color-accent-fg);
-  border-radius: 40px;
-  font-size: 13px;
+  border-radius: 14px;
+  font-size: 14px;
   font-weight: 600;
+  box-shadow: 0 16px 32px -16px color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+.offer-cta:hover {
+  background: var(--color-accent-hover);
+}
+
+/* buttons and fields (components/ui.tsx) */
+.btn {
+  border-radius: 14px;
+  font-weight: 600;
+  transition: background 0.18s, color 0.18s, transform 0.18s, border-color 0.18s, box-shadow 0.18s;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+  box-shadow: 0 16px 32px -16px color-mix(in srgb, var(--color-accent) 70%, transparent);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+.btn-primary:disabled {
+  box-shadow: none;
+}
+.btn-ghost {
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  color: var(--color-fg);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-line));
+  color: var(--color-accent);
+}
+.btn-danger {
+  border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--color-danger) 9%, transparent);
+  color: var(--color-danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+}
+.field-input {
+  border-radius: 14px;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  color: var(--color-fg);
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.field-input::placeholder {
+  color: color-mix(in srgb, var(--color-muted) 75%, transparent);
+}
+.field-input:focus,
+.product-app .field-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+.ui-card {
+  border-radius: 20px;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-soft);
 }
 .activity-row {
   display: flex;
@@ -232,8 +388,7 @@
   padding: 26px;
 }
 .activity-row h3 {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 21px;
   margin: 8px 0;
 }
 .activity-row > div {
@@ -260,6 +415,7 @@
 }
 .readiness-panel {
   background: var(--color-panel-2);
+  border: 1px solid var(--color-line);
   padding: 24px;
   border-radius: 18px;
   display: grid;
@@ -267,8 +423,7 @@
   margin-top: 24px;
 }
 .readiness-panel h3 {
-  font-weight: 600;
-  font-size: 20px;
+  font-size: 21px;
 }
 .receipt-guide {
   font-size: 13px;
@@ -291,7 +446,8 @@
 }
 .trade-summary {
   padding: 28px;
-  border-radius: 22px;
+  border-radius: 20px;
+  border: 1px solid var(--color-line);
   background: var(--color-panel-2);
 }
 .trade-summary h1 {
@@ -341,6 +497,7 @@
   font-weight: 600;
   margin-top: 5px;
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 .help-grid {
   display: grid;
@@ -350,12 +507,12 @@
 .help-step {
   padding: 30px;
   border: 1px solid var(--color-line);
-  border-radius: 22px;
+  border-radius: 20px;
   background: var(--color-panel);
+  box-shadow: var(--shadow-soft);
 }
 .help-step h2 {
   font-size: 24px;
-  letter-spacing: -0.7px;
   margin: 18px 0 12px;
 }
 .help-step p {
@@ -376,40 +533,68 @@
 }
 .funding-page h1 {
   font-size: 42px;
-  letter-spacing: -1.8px;
 }
 .product-app .overflow-x-auto {
   max-width: 100%;
 }
 @media (prefers-reduced-motion: no-preference) {
   .offer-cta {
-    transition: transform 160ms;
+    transition: transform 0.18s, background 0.18s;
   }
   .offer-cta:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
+  }
+  .product-page {
+    animation: product-rise 0.45s var(--ease-out) both;
+  }
+  @keyframes product-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .field-input,
+  .trade-card,
+  .icon-select-menu {
+    transition: none;
+    animation: none;
+  }
+  .btn:hover,
+  .trade-card:hover {
+    transform: none;
   }
 }
 @media (max-width: 760px) {
   .product-nav {
-    padding: 18px 20px 0;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 10px 16px 8px;
   }
   .product-nav .veya-wordmark {
-    font-size: 34px;
+    font-size: 30px;
   }
   .product-wallet {
-    gap: 6px;
+    gap: 2px;
   }
-  .product-wallet button {
-    font-size: 11px;
-    padding: 10px;
+  .product-wallet .btn {
+    font-size: 12px;
+    padding: 10px 12px;
   }
   .product-testnet {
     display: none;
   }
   .product-nav nav {
+    order: 5;
+    flex-basis: 100%;
     justify-content: space-between;
-    gap: 16px;
-    margin-top: 18px;
+    margin-left: 0;
   }
   .product-main {
     padding: 32px 18px 50px;
@@ -520,7 +705,7 @@
 }
 .product-app :focus-visible {
   outline: 2px solid var(--color-accent);
-  outline-offset: 4px;
+  outline-offset: 2px;
 }
 @media (max-width: 400px) {
   .offer-row {
@@ -566,7 +751,7 @@
   display: flex;
   gap: 16px;
   overflow-x: auto;
-  padding: 4px 4px 12px;
+  padding: 6px 4px 20px;
   margin: 0 -4px;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
@@ -579,19 +764,21 @@
   gap: 10px;
   padding: 22px 24px;
   border: 1px solid var(--color-line);
-  border-radius: 20px;
+  border-radius: 18px;
   background: var(--color-panel);
   color: inherit;
   text-decoration: none;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: transform 0.18s, border-color 0.18s, box-shadow 0.18s;
 }
 .trade-card:hover {
-  border-color: var(--color-accent, #dce6bd);
-  background: var(--color-panel-2);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-line));
+  box-shadow: 0 14px 28px -18px color-mix(in srgb, var(--color-accent) 60%, transparent);
 }
 .trade-card strong {
   font-size: 18px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .trade-card p {
   font-size: 13px;
@@ -600,7 +787,8 @@
 }
 .trade-card-link {
   font-size: 13px;
-  color: var(--color-accent, #dce6bd);
+  font-weight: 600;
+  color: var(--color-accent);
 }
 
 /* custom dropdowns with icons (asset, bank) */
@@ -622,9 +810,14 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s;
 }
 .icon-select-button:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-line));
+}
+.icon-select-button[aria-expanded="true"] {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 .icon-select-value {
   display: inline-flex;
@@ -650,9 +843,20 @@
   overflow: auto;
   padding: 6px;
   border: 1px solid var(--color-line);
-  border-radius: 14px;
+  border-radius: 16px;
   background: var(--color-panel);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-pop);
+  animation: icon-select-rise 0.16s ease-out;
+}
+@keyframes icon-select-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .icon-select-option {
   display: flex;
@@ -664,11 +868,15 @@
   cursor: pointer;
   font-size: 14px;
 }
+.icon-select-option {
+  transition: background 0.15s;
+}
 .icon-select-option:hover {
-  background: var(--color-panel-2);
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
 }
 .icon-select-option.is-selected {
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
   font-weight: 600;
 }
 .icon-select-option.is-disabled {
@@ -695,10 +903,43 @@
   padding: 4px 10px;
   border-radius: 8px;
   background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(20, 16, 30, 0.08);
 }
 .icon-select-wide img {
   height: 100%;
   width: auto;
   max-width: 150px;
   object-fit: contain;
+}
+
+/* toasts: a solid raised card with a tone bar, so they read on both themes */
+.app-toast {
+  border-radius: 14px;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-pop);
+  animation: app-toast-in 0.22s ease-out;
+}
+.app-toast.is-ok {
+  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-line));
+  box-shadow: inset 3px 0 0 var(--color-ok), var(--shadow-pop);
+}
+.app-toast.is-error {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-line));
+  box-shadow: inset 3px 0 0 var(--color-danger), var(--shadow-pop);
+}
+@keyframes app-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-toast {
+    animation: none;
+  }
 }

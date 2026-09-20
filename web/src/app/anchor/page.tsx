@@ -15,6 +15,7 @@ import {
 import { PageHeading, useCopy } from "@/components/Product";
 import { useRefresh } from "@/lib/useRefresh";
 import { parseTRY, parseToken } from "@/lib/format";
+import { ArrowMark } from "@/components/ArrowMark";
 function decimal(value: string, places: number): string {
   const n = places === 2 ? parseTRY(value) : parseToken(value, places);
   if (n <= 0n) throw new Error("Enter a positive amount");
@@ -218,7 +219,7 @@ function FundingSession() {
         )}
         action={
           <Link className="product-text-link" href="/sell">
-            {c("Create an offer", "Teklif oluştur")} ↗
+            {c("Create an offer", "Teklif oluştur")} <ArrowMark />
           </Link>
         }
       />
@@ -237,7 +238,7 @@ function FundingSession() {
             )}
           </p>
           <Link href="/how-it-works" className="product-text-link">
-            {c("Read the guide", "Rehberi okuyun")} ↗
+            {c("Read the guide", "Rehberi okuyun")} <ArrowMark />
           </Link>
         </Card>
       ) : (
@@ -587,7 +588,7 @@ function FundingSession() {
                             setWatchId(t.id);
                           }}
                         >
-                          {c("View status", "Durumu gör")} ↗
+                          {c("View status", "Durumu gör")} <ArrowMark />
                         </button>
                       </article>
                     ))}

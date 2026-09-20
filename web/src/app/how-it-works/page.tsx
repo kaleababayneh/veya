@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { PageHeading, ReceiptGuide, useCopy } from "@/components/Product";
 import { Card } from "@/components/ui";
+import { ArrowMark } from "@/components/ArrowMark";
 export default function Help() {
   const c = useCopy();
   return (
@@ -55,7 +56,7 @@ export default function Help() {
       <Card>
         <ReceiptGuide />
         <Link href="/me" className="product-text-link">
-          {c("Continue an existing trade", "Mevcut işleme devam edin")} ↗
+          {c("Continue an existing trade", "Mevcut işleme devam edin")} <ArrowMark />
         </Link>
       </Card>
       <div className="help-grid">
@@ -83,7 +84,7 @@ export default function Help() {
         </Card>
       </div>
       <Link className="product-text-link" href="/market">
-        {c("Explore offers", "Teklifleri keşfedin")} ↗
+        {c("Explore offers", "Teklifleri keşfedin")} <ArrowMark />
       </Link>
     </div>
   );

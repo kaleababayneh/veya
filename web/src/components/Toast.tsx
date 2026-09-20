@@ -23,9 +23,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {items.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto w-full max-w-sm rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur ${
-              t.kind === "ok" ? "border-ok/40 bg-ok/10" : t.kind === "error" ? "border-danger/40 bg-danger/10" : "border-line bg-panel"
-            }`}
+            className={`app-toast pointer-events-auto w-full max-w-sm px-4 py-3 text-sm ${t.kind === "ok" ? "is-ok" : t.kind === "error" ? "is-error" : ""}`}
           >
             <div className="flex items-start justify-between gap-3">
               <div>

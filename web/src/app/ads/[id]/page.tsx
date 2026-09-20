@@ -645,7 +645,6 @@ function QuotePanel({
             <option value="">{copy("Select a bank", "Banka seçin")}</option>
             <option value="ziraat">Ziraat</option>
             <option value="vakif">VakıfBank</option>
-            <option value="other">{copy("Another bank", "Başka banka")}</option>
           </select>
         </Field>
         {bank === "other" ? (

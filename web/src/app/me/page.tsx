@@ -17,6 +17,7 @@ import {
   AdBadge,
 } from "@/components/ui";
 import { PageHeading, useCopy, FundingLink } from "@/components/Product";
+import { ArrowMark } from "@/components/ArrowMark";
 export default function Activity() {
   const { address } = useWallet();
   return <ActivityForWallet key={address ?? "disconnected"} />;
@@ -86,7 +87,7 @@ function ActivityForWallet() {
               {r.buyer === address
                 ? labels[tradeAction(r, now)]
                 : c("Review trade", "İşlemi incele")}{" "}
-              ↗
+              <ArrowMark />
             </Link>
           </article>
         );
@@ -157,7 +158,7 @@ function ActivityForWallet() {
                   )}
                 >
                   <Link className="product-text-link" href="/market">
-                    {c("Explore offers", "Teklifleri keşfet")} ↗
+                    {c("Explore offers", "Teklifleri keşfet")} <ArrowMark />
                   </Link>
                 </Empty>
               )}
@@ -182,14 +183,14 @@ function ActivityForWallet() {
                       </div>
                       <AdBadge status={a.status} soldOut={a.remaining === 0n} />
                       <Link className="product-text-link" href={`/ads/${a.id}`}>
-                        {c("Manage offer", "Teklifi yönet")} ↗
+                        {c("Manage offer", "Teklifi yönet")} <ArrowMark />
                       </Link>
                     </article>
                   ))}
                 </div>
               ) : (
                 <Link className="product-text-link" href="/sell">
-                  {c("Create an offer", "Teklif oluştur")} ↗
+                  {c("Create an offer", "Teklif oluştur")} <ArrowMark />
                 </Link>
               )}
               {incoming.length > 0 && (

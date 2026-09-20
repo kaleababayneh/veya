@@ -58,6 +58,7 @@ import { BankLogo } from "@/components/BankSelect";
 import { receiptFileError, validId } from "@/lib/ux";
 import { useCopy } from "@/components/Product";
 import { Countdown } from "@/components/Countdown";
+import { ArrowMark } from "@/components/ArrowMark";
 
 export default function ReservationPage() {
   const { address } = useWallet();
@@ -483,7 +484,7 @@ function ReservationDetails() {
             target="_blank"
             rel="noreferrer"
           >
-            {short(r.buyer, 6)} ↗
+            {short(r.buyer, 6)} <ArrowMark />
           </a>
         </Alert>
       )}

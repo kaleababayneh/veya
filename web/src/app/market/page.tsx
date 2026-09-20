@@ -19,6 +19,7 @@ import {
 import { IconSelect } from "@/components/IconSelect";
 import { BANKS } from "@/lib/banks";
 import { PageHeading, useCopy } from "@/components/Product";
+import { ArrowMark } from "@/components/ArrowMark";
 export default function Market() {
   const c = useCopy();
   const { amount, asset, bank, set } = useMarketFilters();
@@ -69,7 +70,7 @@ export default function Market() {
         )}
         action={
           <Link href="/sell" className="product-text-link">
-            {c("Want to sell?", "Satmak mı istiyorsunuz?")} ↗
+            {c("Want to sell?", "Satmak mı istiyorsunuz?")} <ArrowMark />
           </Link>
         }
       />
@@ -106,7 +107,6 @@ export default function Market() {
             options={[
               ...BANKS.filter((b) => b.supported).map((b) => ({ value: b.code === "00010" ? "ziraat" : "vakif", label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color }, wide: true })),
               ...BANKS.filter((b) => !b.supported).map((b) => ({ value: `soon-${b.code}`, label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color }, wide: true, disabled: true, tag: c("soon", "yakında") })),
-              { value: "other", label: c("Another bank", "Başka banka"), monogram: { text: "?", color: "#6c6570" } },
             ]}
           />
         </Field>
@@ -117,7 +117,7 @@ export default function Market() {
           "Test tokenları, gerçek banka transferleri. Alımı tamamlamak için orijinal dekont e-postası gerekir.",
         )}{" "}
         <Link href="/how-it-works">
-          {c("See the steps", "Adımları görün")} ↗
+          {c("See the steps", "Adımları görün")} <ArrowMark />
         </Link>
       </div>
       {invalid && (
@@ -234,7 +234,7 @@ export default function Market() {
                     </span>
                   ) : (
                     <Link className="offer-cta" href={href(a.id)}>
-                      {c("Buy", "Al")} {t.symbol} ↗
+                      {c("Buy", "Al")} {t.symbol} <ArrowMark />
                     </Link>
                   )}
                 </article>
