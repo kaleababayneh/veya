@@ -214,9 +214,9 @@ async function sellerReview() {
   });
   fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
   await screen.findByText("Where should buyers pay you?");
-  fireEvent.change(screen.getByLabelText("Bank"), {
-    target: { value: "00010" },
-  });
+  // the bank picker is a custom dropdown: open it, then pick the bank by name
+  fireEvent.click(screen.getByLabelText("Bank"));
+  fireEvent.click(await screen.findByRole("option", { name: /Ziraat Bankası/ }));
   fireEvent.change(screen.getByLabelText("IBAN"), {
     target: { value: "TR420001000000000000000001" },
   });

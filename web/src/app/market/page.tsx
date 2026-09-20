@@ -94,10 +94,7 @@ export default function Market() {
             ariaLabel={c("Asset to receive", "Alınacak varlık")}
             value={asset}
             onChange={setAsset}
-            options={[
-              { value: "all", label: c("All assets", "Tüm varlıklar"), monogram: { text: "∗", color: "#6c6570" } },
-              ...TOKENS.map((t) => ({ value: t.address, label: t.symbol, icon: `/tokens/${t.symbol.toLowerCase()}.svg` })),
-            ]}
+            options={TOKENS.map((t) => ({ value: t.address, label: t.symbol, icon: `/tokens/${t.symbol.toLowerCase()}.svg` }))}
           />
         </Field>
         <Field label={c("Paying from", "Ödeme bankanız")}>
