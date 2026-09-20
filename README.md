@@ -112,7 +112,6 @@ notes: [`contracts/DEPLOYMENTS.md`](contracts/DEPLOYMENTS.md).
 3. Pay by FAST from Ziraat or VakıfBank with the reference shown, then press **I have sent the transfer**.
 4. In Gmail open the bank's receipt, choose *Show original* → *Download original*, and drop the `.eml`. Claim when the proof is ready.
 
-No Turkish bank account? Open a settled trade, or post an offer from the **Sell** tab.
 
 ## Stellar integrations
 
