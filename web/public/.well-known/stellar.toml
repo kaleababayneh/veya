@@ -5,11 +5,11 @@ VERSION = "2.0.0"
 NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
 
 [DOCUMENTATION]
-ORG_NAME = "zkOTC"
-ORG_URL = "https://zkotc.vercel.app"
+ORG_NAME = "Veya"
+ORG_URL = "https://www.veya.lol"
 ORG_DESCRIPTION = "Peer-to-peer TRY ⇄ XLM/USDC market on Stellar. Makers escrow tokens in a Soroban contract; buyers pay by FAST from Ziraat or VakıfBank and settle with a RISC Zero proof of the bank's DKIM-signed receipt e-mail, verified on-chain by the RISC Zero verifier router. No custodian, no oracle, no dispute desk."
-ORG_GITHUB = "kaleababayneh/stellarpro"
-ORG_LOGO = "https://zkotc.vercel.app/icon.png"
+ORG_GITHUB = "kaleababayneh/veya"
+ORG_LOGO = "https://www.veya.lol/icon.png"
 ORG_SUPPORT_EMAIL = "kaleababayneh65@gmail.com"
 
 [[PRINCIPALS]]

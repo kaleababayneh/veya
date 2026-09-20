@@ -11,7 +11,7 @@ declare → drop the .eml → proof (~15 s) → claim.
 | Five ads live (kaleab, kaloş, peter, ayşe, mehmet); the demo ad's payee is the presenter's own Vakıf IBAN | market page shows them |
 | One Ziraat account (the buyer) with ≥ ₺70 (₺50 + ₺8.37 fee), phone on the desk | |
 | A **fresh reservation paid one hour before** (declared, .eml already downloaded) as the fallback, plus reservation #7/#8 bookmarked as completed trades | "Recent trades" shows them |
-| Web app: https://zkotc.vercel.app loads, `/gpu/info` answers, prover-offline banner absent on a reservation page | |
+| Web app: https://www.veya.lol loads, `/api/prove/info` answers, prover-offline banner absent on a reservation page | |
 | Backup video of the full loop (recorded at the rehearsal) | on the laptop |
 
 ## Live sequence

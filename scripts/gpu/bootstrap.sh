@@ -62,8 +62,10 @@ if [ "$ENGINE" = icicle ]; then
   # itself in a few minutes, which beats uploading 3.9 GB from a laptop; an artifact host may still pre-stage them
   if [ ! -f "$A/zkey/stark_verify_final.zkey" ] || [ ! -f "$A/zkey/stark_verify_graph.bin" ]; then
     echo "zkey not staged — downloading risc0-groth16 with rzup (5 GB)"
-    export PATH=$HOME/.risc0/bin:$PATH
-    [ -x "$HOME/.risc0/bin/rzup" ] || curl -sL https://risczero.com/install | bash >/dev/null 2>&1
+    export PATH=$HOME/.cargo/bin:$HOME/.risc0/bin:$PATH
+    # the rzup installer refuses to run without rustc ("Missing required tools: rustc"), and says so only on stderr
+    [ -x "$HOME/.cargo/bin/rustc" ] || curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal >/dev/null
+    [ -x "$HOME/.risc0/bin/rzup" ] || curl -sL https://risczero.com/install | bash >/dev/null
     EXT=$HOME/.risc0/extensions/v0.1.0-risc0-groth16
     [ -f "$EXT/stark_verify_final.zkey" ] || rzup install risc0-groth16 >/dev/null 2>&1
     mkdir -p "$A/zkey" && cp "$EXT/stark_verify_final.zkey" "$EXT/stark_verify_graph.bin" "$A/zkey/"

@@ -9,8 +9,8 @@ Text in *italics* is the on-slide copy; "Say" is what you speak; "Show" is the v
 
 ## 1 · Cover (template)
 
-*zkOTC — a peer-to-peer TRY → XLM/USDC market on Stellar, settled by a zero-knowledge proof of your bank transfer.*
-*Kaleab Abayneh · Genesis Track · zkotc.vercel.app · github.com/kaleababayneh/stellarpro*
+*zkOTC (Veya) — a peer-to-peer TRY → XLM/USDC market on Stellar, settled by a zero-knowledge proof of your bank transfer.*
+*Kaleab Abayneh · Genesis Track · veya.lol · github.com/kaleababayneh/veya*
 
 Show: the market page screenshot (five ads, "Recent trades" with the three settled trades).
 Say: "Buy crypto with Turkish lira the way you pay anyone: a FAST transfer. No exchange, no custodian, no dispute desk."

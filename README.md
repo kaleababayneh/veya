@@ -8,7 +8,7 @@ and the escrow pays out only when Stellar's RISC Zero verifier router accepts th
 screenshots: the evidence is the bank's own RSA signature, and a payment reference typed into the transfer binds it to the
 claiming wallet.
 
-**Try it:** https://zkotc.vercel.app (Stellar testnet, Freighter). Paying needs a Ziraat account; anyone can post an ad with
+**Try it:** https://www.veya.lol (Stellar testnet, Freighter). Paying needs a Ziraat account; anyone can post an ad with
 testnet XLM ([Friendbot](https://lab.stellar.org/account/fund?$=network$id=testnet)) or open a settled trade from the
 market page to see a real proof. Built for the Stellar Pro Hackathon, Istanbul, 18–20 September 2026.
 
