@@ -6,13 +6,13 @@ const Arrow = () => <span aria-hidden="true">↗</span>;
 export default function Home() {
   return <VeyaMotion>
     <section className="veya-hero" aria-labelledby="hero-title">
-      <Image src="/brand/bosphorus-options/option-2.webp" alt="Two people sharing a phone at an Istanbul waterfront café, with a ferry crossing the Bosphorus behind them" fill unoptimized loading="eager" fetchPriority="high" sizes="100vw" className="hero-photo" />
+      <Image src="/brand/bosphorus-options/option-1.webp" alt="A couple at a Bosphorus café table, one showing the other something on a phone, a ferry passing on the water behind them" fill unoptimized loading="eager" fetchPriority="high" sizes="100vw" className="hero-photo" />
       <div className="hero-shade" />
       <div className="hero-copy">
         <p className="eyebrow">A familiar way forward</p>
         <h1 id="hero-title">Your lira.<br />A world of<br /><em>possibility.</em></h1>
         <p className="hero-description">Buy USDC or XLM from peers.<br />Pay with your Turkish bank account.</p>
-        <Link href="/market" className="veya-button pistachio">Explore Veya <Arrow /></Link>
+        <Link href="/market" className="veya-button pistachio">Launch app <Arrow /></Link>
       </div>
       <div className="hero-foot"><span>Made for the way you move.</span><span>Built on Stellar <span aria-hidden="true">↗</span></span></div>
     </section>
@@ -54,6 +54,6 @@ export default function Home() {
     </div></section>
 
     <section className="veya-close" data-reveal><p className="eyebrow">A new way, starting here.</p><h2>Meet your<br />next move.</h2><Link className="veya-button pistachio" href="/market">Explore the testnet <Arrow /></Link><p className="testnet-note">Stellar testnet · Test tokens, real bank transfers.</p><div className="closing-wordmark" aria-hidden="true">veya<span>↗</span></div></section>
-    <footer className="veya-footer"><Link href="/" className="veya-wordmark">veya</Link><span>From Türkiye. Built on Stellar.</span><div><Link href="/market">Market</Link><Link href="/sell">Sell crypto</Link><Link href="/how-it-works">How it works</Link></div><span className="footer-small">Veya is an experimental peer-to-peer interface. Operator and smart-contract risks apply.</span></footer>
+    <footer className="veya-footer"><Link href="/" className="veya-wordmark">veya</Link><span>From Türkiye. Built on Stellar.</span><div><Link href="/market">Market</Link><Link href="/sell">Sell crypto</Link><Link href="/how-it-works">How it works</Link></div></footer>
   </VeyaMotion>;
 }
