@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useWallet } from "@/lib/wallet";
 import { listAds, listReservations, getConfig } from "@/lib/escrow";
 import { useRefresh } from "@/lib/useRefresh";
-import { tradeAction, netReceipt, validId } from "@/lib/ux";
+import { tradeAction, netReceipt } from "@/lib/ux";
 import { fmtToken, fmtTRY, fmtDate } from "@/lib/format";
 import { tokenByAddress } from "@/lib/tokens";
 import {
@@ -22,7 +22,6 @@ export default function Activity() {
   return <ActivityForWallet key={address ?? "disconnected"} />;
 }
 function ActivityForWallet() {
-  const [olderId, setOlderId] = useState("");
   const { address, connect, connecting, ready } = useWallet(),
     c = useCopy();
   const load = useCallback(async () => {
@@ -204,31 +203,6 @@ function ActivityForWallet() {
             </>
           )}
         </>
-      )}
-      {address && (
-        <details className="rounded-xl border border-line p-4">
-          <summary>{c("Find an older trade", "Eski bir işlemi bul")}</summary>
-          <p className="text-sm text-muted my-3">
-            {c(
-              "Activity covers the latest 200 market reservations. Open an older trade using its number or your saved link.",
-              "İşlemler son 200 piyasa rezervasyonunu kapsar. Eski bir işlemi numarasıyla veya kaydettiğiniz bağlantıyla açın.",
-            )}
-          </p>
-          <label className="block">
-            {c("Trade number", "İşlem numarası")}
-            <input
-              className="block border border-line rounded-lg p-2 my-2"
-              inputMode="numeric"
-              value={olderId}
-              onChange={(e) => setOlderId(e.target.value)}
-            />
-          </label>
-          {validId(olderId) !== null && (
-            <Link className="product-text-link" href={`/r/${olderId}`}>
-              {c("Open trade", "İşlemi aç")} ↗
-            </Link>
-          )}
-        </details>
       )}
     </div>
   );

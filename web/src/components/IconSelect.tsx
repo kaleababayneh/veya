@@ -2,10 +2,31 @@
 /** Custom dropdown with an icon per option (token logos, bank logos); options can be disabled with a tag. */
 import { useEffect, useRef, useState } from "react";
 
-export type IconOption = { value: string; label: string; icon?: string | null; iconAlt?: string; disabled?: boolean; tag?: string; monogram?: { text: string; color: string } };
+/** `wide`: the icon is a wordmark that already carries the name — show it large and hide the text label. */
+export type IconOption = { value: string; label: string; icon?: string | null; iconAlt?: string; disabled?: boolean; tag?: string; monogram?: { text: string; color: string }; wide?: boolean };
 
 export function OptionIcon({ o, size = 22 }: { o: IconOption; size?: number }) {
   const [failed, setFailed] = useState(false);
+  if (o.wide && o.icon && !failed) {
+    return (
+      <span className="icon-select-wide">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={o.icon} alt={o.label} onError={() => setFailed(true)} />
+      </span>
+    );
+  }
+  if (o.wide && (failed || !o.icon)) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        {o.monogram && (
+          <span aria-hidden className="inline-grid shrink-0 place-items-center rounded-full font-bold text-white" style={{ width: size, height: size, background: o.monogram.color, fontSize: Math.round(size * 0.42) }}>
+            {o.monogram.text}
+          </span>
+        )}
+        <span>{o.label}</span>
+      </span>
+    );
+  }
   if (o.icon && !failed) {
     return (
       <span aria-hidden className="inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-white ring-1 ring-black/10" style={{ width: size, height: size, padding: Math.max(2, Math.round(size * 0.14)) }}>
@@ -50,7 +71,7 @@ export function IconSelect({ value, options, onChange, placeholder, className = 
       <button type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel} className="icon-select-button" onClick={(e) => { e.preventDefault(); setOpen((o) => !o); }}>
         <span className="icon-select-value">
           {selected ? <OptionIcon o={selected} /> : null}
-          <span className={selected ? "" : "text-muted"}>{selected ? selected.label : placeholder ?? "Select…"}</span>
+          {selected?.wide ? <span className="sr-only">{selected.label}</span> : <span className={selected ? "" : "text-muted"}>{selected ? selected.label : placeholder ?? "Select…"}</span>}
         </span>
         <span aria-hidden className="icon-select-chevron">⌄</span>
       </button>
@@ -72,7 +93,7 @@ export function IconSelect({ value, options, onChange, placeholder, className = 
             >
               <span className="icon-select-value">
                 <OptionIcon o={o} />
-                {o.label}
+                {o.wide ? <span className="sr-only">{o.label}</span> : o.label}
               </span>
               {o.tag && <span className="icon-select-tag">{o.tag}</span>}
             </li>

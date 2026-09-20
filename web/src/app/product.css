@@ -687,3 +687,18 @@
   border-radius: 6px;
   padding: 2px 6px;
 }
+/* wordmark logos (banks): shown large on a light pill instead of a tiny disc + text */
+.icon-select-wide {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #fff;
+}
+.icon-select-wide img {
+  height: 100%;
+  width: auto;
+  max-width: 150px;
+  object-fit: contain;
+}

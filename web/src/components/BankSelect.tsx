@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { BANKS, type Bank } from "@/lib/banks";
+import { IconSelect } from "./IconSelect";
 
 export function BankLogo({ bank, size = 24 }: { bank: Bank; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -57,24 +58,20 @@ export function BankSelect({
 }) {
   const { lang } = useI18n();
   return (
-    <select
+    <IconSelect
+      className={className}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={`w-full rounded-xl border border-line bg-panel px-3 py-2.5 text-sm ${className}`}
-    >
-      <option value="">
-        {lang === "tr" ? "Bankanızı seçin…" : "Select your bank…"}
-      </option>
-      {BANKS.map((b) => (
-        <option key={b.code} value={b.code} disabled={!b.supported}>
-          {b.name}
-          {!b.supported
-            ? lang === "tr"
-              ? " · Desteklenmiyor"
-              : " · Not supported"
-            : ""}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      placeholder={lang === "tr" ? "Bankanızı seçin…" : "Select your bank…"}
+      options={BANKS.map((b) => ({
+        value: b.code,
+        label: b.name,
+        icon: b.logo,
+        monogram: { text: b.initials, color: b.color },
+        wide: true,
+        disabled: !b.supported,
+        tag: b.supported ? undefined : lang === "tr" ? "yakında" : "soon",
+      }))}
+    />
   );
 }

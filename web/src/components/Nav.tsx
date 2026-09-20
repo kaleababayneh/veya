@@ -49,6 +49,7 @@ export function Nav() {
           ["/sell", c("Sell", "Sat")],
           ["/me", c("Activity", "İşlemler")],
           ["/how-it-works", c("Help", "Yardım")],
+          ["/about", c("About", "Hakkında")],
         ].map(([href, label]) => (
           <Link
             key={href}

@@ -19,6 +19,7 @@ web/.vercel/
 zkpdf/
 zkpdf-template/
 vendor/
+zyx/
 zkotc-lib/target/
 prover/build.log
 # GPU deploy settings (token, test payee)

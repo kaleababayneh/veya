@@ -107,8 +107,8 @@ export default function Market() {
             onChange={setBank}
             placeholder={c("Choose your bank", "Bankanızı seçin")}
             options={[
-              ...BANKS.filter((b) => b.supported).map((b) => ({ value: b.code === "00010" ? "ziraat" : "vakif", label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color } })),
-              ...BANKS.filter((b) => !b.supported).map((b) => ({ value: `soon-${b.code}`, label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color }, disabled: true, tag: c("soon", "yakında") })),
+              ...BANKS.filter((b) => b.supported).map((b) => ({ value: b.code === "00010" ? "ziraat" : "vakif", label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color }, wide: true })),
+              ...BANKS.filter((b) => !b.supported).map((b) => ({ value: `soon-${b.code}`, label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color }, wide: true, disabled: true, tag: c("soon", "yakında") })),
               { value: "other", label: c("Another bank", "Başka banka"), monogram: { text: "?", color: "#6c6570" } },
             ]}
           />
