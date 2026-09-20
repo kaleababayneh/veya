@@ -3,8 +3,9 @@ import { useMarketFilters } from "@/lib/useMarketFilters";
 import { useNow } from "@/lib/useNow";
 import { useCallback } from "react";
 import Link from "next/link";
-import { listAds, getConfig, quoteKurus, tokensForKurus } from "@/lib/escrow";
-import { parseTRY, fmtTRY, fmtToken, short } from "@/lib/format";
+import { listAds, listReservations, getConfig, quoteKurus, tokensForKurus } from "@/lib/escrow";
+import { ReservationStatus } from "@/contracts/escrow";
+import { parseTRY, fmtTRY, fmtToken, fmtDate, short } from "@/lib/format";
 import { TOKENS, tokenByAddress } from "@/lib/tokens";
 import { availableOffer, netReceipt } from "@/lib/ux";
 import { useRefresh } from "@/lib/useRefresh";
@@ -14,8 +15,9 @@ import {
   Empty,
   Field,
   Skeleton,
-  inputCls,
 } from "@/components/ui";
+import { IconSelect } from "@/components/IconSelect";
+import { BANKS } from "@/lib/banks";
 import { PageHeading, useCopy } from "@/components/Product";
 export default function Market() {
   const c = useCopy();
@@ -24,8 +26,8 @@ export default function Market() {
     setAsset = (v: string) => set("asset", v),
     setBank = (v: string) => set("bank", v);
   const load = useCallback(async () => {
-    const [ads, cfg] = await Promise.all([listAds(), getConfig()]);
-    return { ads, cfg };
+    const [ads, cfg, reservations] = await Promise.all([listAds(), getConfig(), listReservations(100)]);
+    return { ads, cfg, reservations };
   }, []);
   const { data, error, refresh, updated } = useRefresh(load);
   let kurus = 0n,
@@ -49,6 +51,11 @@ export default function Market() {
           ? 1
           : 0,
     );
+  // completed trades: each one settled on a verified proof of the bank transfer
+  const trades = (data?.reservations ?? [])
+    .filter((r) => r.status === ReservationStatus.Settled)
+    .slice(0, 6)
+    .map((r) => ({ r, ad: (data?.ads ?? []).find((a) => a.id === r.ad_id) }));
   const href = (id: bigint) =>
     `/ads/${id}?amount=${encodeURIComponent(amount)}&bank=${encodeURIComponent(bank)}`;
   return (
@@ -83,30 +90,28 @@ export default function Market() {
           </div>
         </Field>
         <Field label={c("Receive", "Alacağınız varlık")}>
-          <select
-            className={inputCls}
+          <IconSelect
+            ariaLabel={c("Asset to receive", "Alınacak varlık")}
             value={asset}
-            onChange={(e) => setAsset(e.target.value)}
-          >
-            <option value="all">{c("All assets", "Tüm varlıklar")}</option>
-            {TOKENS.map((t) => (
-              <option key={t.address} value={t.address}>
-                {t.symbol}
-              </option>
-            ))}
-          </select>
+            onChange={setAsset}
+            options={[
+              { value: "all", label: c("All assets", "Tüm varlıklar"), monogram: { text: "∗", color: "#6c6570" } },
+              ...TOKENS.map((t) => ({ value: t.address, label: t.symbol, icon: `/tokens/${t.symbol.toLowerCase()}.svg` })),
+            ]}
+          />
         </Field>
         <Field label={c("Paying from", "Ödeme bankanız")}>
-          <select
-            className={inputCls}
+          <IconSelect
+            ariaLabel={c("Bank you pay from", "Ödeme yapacağınız banka")}
             value={bank}
-            onChange={(e) => setBank(e.target.value)}
-          >
-            <option value="">{c("Choose your bank", "Bankanızı seçin")}</option>
-            <option value="ziraat">Ziraat</option>
-            <option value="vakif">VakıfBank</option>
-            <option value="other">{c("Another bank", "Başka banka")}</option>
-          </select>
+            onChange={setBank}
+            placeholder={c("Choose your bank", "Bankanızı seçin")}
+            options={[
+              ...BANKS.filter((b) => b.supported).map((b) => ({ value: b.code === "00010" ? "ziraat" : "vakif", label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color } })),
+              ...BANKS.filter((b) => !b.supported).map((b) => ({ value: `soon-${b.code}`, label: b.name, icon: b.logo, monogram: { text: b.initials, color: b.color }, disabled: true, tag: c("soon", "yakında") })),
+              { value: "other", label: c("Another bank", "Başka banka"), monogram: { text: "?", color: "#6c6570" } },
+            ]}
+          />
         </Field>
       </section>
       <div className="product-notice">
@@ -250,6 +255,38 @@ export default function Market() {
             "Kesin fiyat rezervasyondan önce kontrol edilir.",
           )}
         </p>
+      )}
+      {trades.length > 0 && (
+        <>
+          <div className="section-heading">
+            <h2>
+              {c("Recent trades", "Son işlemler")} <span>{trades.length}</span>
+            </h2>
+            <span className="text-sm text-muted">
+              {c(
+                "Each settled with a zero-knowledge proof of the bank transfer, verified on-chain.",
+                "Her biri banka transferinin sıfır bilgi ispatıyla, zincir üzerinde doğrulanarak tamamlandı.",
+              )}
+            </span>
+          </div>
+          <div className="trade-strip" role="list">
+            {trades.map(({ r, ad }) => {
+              const t = ad ? tokenByAddress(ad.token) : null;
+              const fee = data ? (r.amount * BigInt(Number(data.cfg.fee_bps))) / 10000n : 0n;
+              return (
+                <Link key={String(r.id)} href={`/r/${r.id}`} className="trade-card" role="listitem">
+                  <strong>
+                    {fmtTRY(r.try_amount_kurus)} → {ad && t ? `${fmtToken(r.amount - fee, ad.decimals)} ${t.symbol}` : "…"}
+                  </strong>
+                  <p>
+                    {ad?.nickname || (ad ? short(ad.seller, 4) : c("maker", "satıcı"))} → <span className="mono">{short(r.buyer, 4)}</span> · {c("settled", "tamamlandı")} {fmtDate(r.settled_at)}
+                  </p>
+                  <span className="trade-card-link">{c("View the trade", "İşlemi gör")} →</span>
+                </Link>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
