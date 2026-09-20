@@ -8,6 +8,8 @@ export const config = {
   xlmSac: process.env.NEXT_PUBLIC_XLM_SAC ?? "",
   usdcSac: process.env.NEXT_PUBLIC_USDC_SAC ?? "",
   proverUrl: (process.env.NEXT_PUBLIC_PROVER_URL ?? "http://localhost:8787").replace(/\/$/, ""),
+  /** SEP home domain of the Turkish anchor used for the licensed TRY rail (SEP-1/10/6/38 client); empty = venue hidden */
+  anchorHomeDomain: process.env.NEXT_PUBLIC_ANCHOR_HOME_DOMAIN ?? "",
   /** minutes left on a lock below which the UI refuses to let the buyer start a bank payment */
   minMinutesToPay: 15,
 };

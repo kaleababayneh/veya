@@ -308,6 +308,20 @@ function BuyerFlow({
   const [linkCopied, setLinkCopied] = useState(false);
   const [bank, setBank] = useState<"ziraat" | "vakif">(() => { try { return localStorage.getItem("zkotc-bank") === "vakif" ? "vakif" : "ziraat"; } catch { return "ziraat"; } });
   const pickBank = (b: "ziraat" | "vakif") => { setBank(b); try { localStorage.setItem("zkotc-bank", b); } catch { /* ignore */ } };
+  const [detectedBank, setDetectedBank] = useState<"ziraat" | "vakif" | null>(null);
+  /** The bank is decided by the e-mail's DKIM signature, not by the switch: read the file's headers and follow them. */
+  const takeFile = (f: File | null) => {
+    setFile(f);
+    setDetectedBank(null);
+    if (!f) return;
+    f.slice(0, 64 * 1024).text().then((head) => {
+      const m = /d=\s*([a-z0-9.-]+)/i.exec(head.replace(/\r?\n[ \t]+/g, " "));
+      const d = m?.[1]?.toLowerCase() ?? "";
+      const b = d === "vakifbank.com.tr" ? "vakif" : d === "ileti.ziraatbank.com.tr" ? "ziraat" : null;
+      setDetectedBank(b);
+      if (b) pickBank(b);
+    }).catch(() => {});
+  };
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(true);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -455,10 +469,10 @@ function BuyerFlow({
             <label
               className={`flex min-h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-5 text-center text-sm ${file ? "border-ok/60 bg-ok/5" : "border-line hover:border-accent/60"}`}
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) takeFile(f); }}
             >
-              <input type="file" accept=".eml,message/rfc822" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-              {file ? <span className="font-medium">{file.name}</span> : <span className="font-medium">{tr("Drop the .eml file here, or click to choose it")}</span>}
+              <input type="file" accept=".eml,message/rfc822" className="hidden" onChange={(e) => takeFile(e.target.files?.[0] ?? null)} />
+              {file ? <span className="font-medium">{file.name}{detectedBank && <span className="ml-2 rounded-md bg-ok/15 px-1.5 py-0.5 text-xs text-ok">{detectedBank === "vakif" ? "VakıfBank" : "Ziraat"} receipt detected</span>}{file && detectedBank === null && <span className="ml-2 rounded-md bg-warn/15 px-1.5 py-0.5 text-xs text-warn">no Ziraat/VakıfBank signature found</span>}</span> : <span className="font-medium">{tr("Drop the .eml file here, or click to choose it")}</span>}
               <span className="text-xs text-muted">Apple Mail: File → Save As → Raw Message Source</span>
             </label>
             <label className="flex items-start gap-2 text-xs text-muted">

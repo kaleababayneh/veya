@@ -20,6 +20,7 @@ export function Nav() {
       {link("/", "Market")}
       {link("/sell", "Post an ad")}
       {link("/me", "My activity")}
+      {link("/anchor", "Anchor")}
       {link("/how-it-works", "How it works")}
     </>
   );

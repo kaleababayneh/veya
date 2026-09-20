@@ -1,0 +1,29 @@
+# SEP-1 — zkOTC, a non-custodial TRY on-ramp on Stellar testnet.
+# Buyers pay Turkish lira by FAST to a maker; a zero-knowledge proof of the bank's DKIM-signed receipt e-mail
+# releases the escrowed XLM/USDC. For the licensed rail, the app is a SEP-6/10/38 client of a Turkish anchor.
+VERSION = "2.0.0"
+NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"
+
+[DOCUMENTATION]
+ORG_NAME = "zkOTC"
+ORG_URL = "https://zkotc.vercel.app"
+ORG_DESCRIPTION = "Peer-to-peer TRY ⇄ XLM/USDC market on Stellar. Makers escrow tokens in a Soroban contract; buyers pay by FAST from Ziraat or VakıfBank and settle with a RISC Zero proof of the bank's DKIM-signed receipt e-mail, verified on-chain by the RISC Zero verifier router. No custodian, no oracle, no dispute desk."
+ORG_GITHUB = "kaleababayneh/stellarpro"
+ORG_LOGO = "https://zkotc.vercel.app/icon.png"
+ORG_SUPPORT_EMAIL = "kaleababayneh65@gmail.com"
+
+[[PRINCIPALS]]
+name = "Kaleab Abayneh"
+email = "kaleababayneh65@gmail.com"
+github = "kaleababayneh"
+
+# zkOTC-specific: the Soroban contracts a client needs (not part of SEP-1).
+[ZKOTC]
+NETWORK = "testnet"
+ESCROW_CONTRACT = "CAFU5GMKM3UNZ3VLOZ7HX5HDFB7L7U2HM3UZLYLTFHIQLILIEYN5SDLG"
+RISC0_VERIFIER_ROUTER = "CBHIBH3T5ZZL6ZZZJFKS5QQKSB2VQ4D7GMBKQLNOQ7P2XBMPGVPG3FCG"
+XLM_SAC = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+USDC_SAC = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+BANKS = ["Ziraat Bankası", "VakıfBank"]
+# The Turkish anchor this app integrates as a SEP client (SEP-1 discovery, SEP-10, SEP-6 deposit/withdraw, SEP-38 quotes).
+ANCHOR_HOME_DOMAIN = "tr-mock-anchor.fly.dev"

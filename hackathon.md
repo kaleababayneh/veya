@@ -45,7 +45,7 @@ narrative, presentation. → **Fill this in when the criteria are released and r
 |---|---|---|
 | Net-new, built from 1 Sep | First commit 7 Sep 2026; public repo; every day's work in git | none |
 | Integration (eligible protocol) | **Stellar Wallets Kit** (listed) is the only way users sign; **Nethermind RISC Zero verifier router** (Stellar zk infra) verifies every settlement on-chain; **Circle USDC** (testnet SAC) is a supported token | add one *DeFi* integration judges recognise from the table: **Reflector oracle price peg** for ads (see §3.2); post a **USDC ad** so the Circle path is exercised |
-| Anchor / local payments | The product *is* a TRY rail: real ₺50 and ₺58 FAST transfers on 12 Sep produced real XLM balances on testnet (reservations #7, #8). Bank rail = FAST from Ziraat or VakıfBank; evidence = the bank's DKIM-signed receipt | The wording says "using an anchor". We are **anchor-less by design** and must say so confidently (§3.3), and make the "put TRY in, get a balance out" claim undeniable with a live trade during the demo. Optional: a SEP-1 `stellar.toml` so the deployment looks like a proper Stellar service |
+| Anchor / local payments | Two rails. (a) The peer rail *is* a TRY rail: real ₺50/₺58 FAST transfers on 12 Sep produced real XLM on testnet (reservations #7, #8, #11), from Ziraat and VakıfBank, evidence = the bank's DKIM-signed receipt. (b) **Anchor integration done 13 Sep**: zkOTC is a SEP client of DevRel's TR mock anchor (`tr-mock-anchor.fly.dev`: SEP-1 discovery, SEP-10 wallet login, SEP-6 deposit/withdraw, SEP-38 quotes); makers fund USDC inventory and cash out through it, and its rate is the "price to beat" on the market. A USDC ad (merve, ₺47.90, 1.9 % under the anchor) was funded through the anchor. SEP-1 `stellar.toml` published | Tell the story as one product (§3.3): the anchor is the licensed rail makers use; the peer rail is what buyers use and what wins on price and privacy |
 | Core feature / load-bearing | Without the verifier router no trade settles; without the wallet kit nothing signs | none |
 | Real traction / real users | 3 settled trades (2 Ziraat-paid, 1 VakıfBank-paid), 6 ads, 11 reservations, all by the team | **onboard strangers**: every Ziraat/Vakıf customer in the room can complete a trade in 3 minutes (§3.4) |
 | README, documented contracts, deployed artifacts, demo | README rewritten 12 Sep; `contracts/DEPLOYMENTS.md`; live at zkotc.vercel.app; escrow + verifier on testnet | add a **technical design doc with an architecture diagram** (§3.5) and a **demo video** |
@@ -57,7 +57,7 @@ narrative, presentation. → **Fill this in when the criteria are released and r
 ### 3.1 Calendar
 | When | What |
 |---|---|
-| Sat 13 Sep | Reflector price peg (contract + web), USDC ad, technical design doc + diagram |
+| Sat 13 Sep | ~~Anchor integration~~ done (SEP-1/10/6/38 client, maker-facing, price-to-beat on the market, USDC ad funded via the anchor). Next: technical design doc + diagram; Reflector peg now optional (the anchor's SEP-38 rate already comes from Reflector) |
 | Sun 14 Sep | `claim_bond` real test, SEP-1 `stellar.toml`, skill citations, QA pass (`docs/QA-CHECKLIST.md`) — first Vakıf-paid trade already done 12 Sep (#11) |
 | Mon 15 Sep | `reclaim_bond` on #1 (window ends 20:09), pitch deck v1, demo video recorded |
 | Tue 16 Sep | **Code freeze on the guest** (image id stable), README final, rehearsal #1 |
@@ -75,7 +75,7 @@ the feed, a "peg to market" toggle on Post an ad, and a market column "market +1
 is flaky: keep fixed prices, ship the peg behind a flag, and mention it as roadmap.
 
 ### 3.3 Anchor / local payments: the argument
-State it on slide 3 and in the README, in one breath: *"Turkey has instant, free FAST transfers between every bank. We use them
+We now have both: the peer rail and a real SEP anchor integration. Say it as one product: *"Turkish users get two doors to the same balance. The licensed door is the anchor (SEP-6, KYC, a spread over the oracle rate); makers use it to refill inventory and cash out. The peer door is ours: pay a maker by FAST, prove the bank's own signed receipt in zero knowledge, no KYC, no custody, and a price that beats the anchor because makers compete with its rate on our board."* Then the older one-breath version, still true: *"Turkey has instant, free FAST transfers between every bank. We use them
 as the fiat rail directly: the buyer pays the seller by FAST, and the bank's own DKIM-signed receipt e-mail, verified inside a
 zkVM, releases the escrow. Real lira in, real XLM/USDC out, no anchor holding money, no KYC vendor, no chargeback risk. It is the
 P2P rail Binance runs for Turkish users, without Binance."* Then show the two settled trades on stellar.expert and do a live one.

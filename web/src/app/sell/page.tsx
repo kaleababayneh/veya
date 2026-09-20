@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
@@ -128,6 +129,9 @@ export default function Sell() {
         </Card>
         <Card className="space-y-4">
           <p className="text-sm font-semibold">Where buyers pay you</p>
+          {t?.symbol === "USDC" && (
+            <p className="-mt-2 text-xs text-muted">Need USDC inventory? <Link className="underline" href="/anchor">Fund it through the licensed anchor</Link> (SEP-6), then price your ad under its rate.</p>
+          )}
           <Field label="Your bank" hint="Shown to a buyer together with your IBAN after they reserve. More banks open up as their receipts are supported.">
             <BankSelect value={bankCode} onChange={setBankCode} />
           </Field>

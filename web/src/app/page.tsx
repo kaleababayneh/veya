@@ -7,6 +7,7 @@ import { fmtToken, fmtTRY, fmtDate, short } from "@/lib/format";
 import { TOKENS, tokenByAddress } from "@/lib/tokens";
 import { Alert, Button, Empty, Skeleton } from "@/components/ui";
 import { config, contractUrl } from "@/lib/config";
+import { anchorConfigured, indicativePrice } from "@/lib/anchor";
 
 export default function Market() {
   const [ads, setAds] = useState<Ad[] | null>(null);
@@ -14,6 +15,8 @@ export default function Market() {
   const [err, setErr] = useState<string | null>(null);
   const [token, setToken] = useState<string>("all");
   const [trades, setTrades] = useState<Reservation[] | null>(null);
+  /** the licensed anchor's USDC price in TRY (USD/TRY oracle + spread): the number our makers compete with */
+  const [anchorPrice, setAnchorPrice] = useState<number | null>(null);
 
   useEffect(() => {
     const load = () =>
@@ -32,6 +35,7 @@ export default function Market() {
     // settled reservations = completed trades; each one carries a verified proof on-chain
     const loadTrades = () => listReservations(100).then((rs) => setTrades(rs.filter((r) => r.status === ReservationStatus.Settled).slice(0, 6))).catch(() => setTrades([]));
     loadTrades();
+    if (anchorConfigured()) indicativePrice("buy", "100").then((p) => setAnchorPrice(Number(p.price))).catch(() => {});
     const t = setInterval(() => { load(); loadTrades(); }, 15_000);
     return () => clearInterval(t);
   }, []);
@@ -78,6 +82,21 @@ export default function Market() {
         </div>
       </section>
 
+      {anchorPrice !== null && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-panel px-4 py-3 text-sm">
+          <p>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Price to beat</span>{" "}
+            the licensed anchor sells USDC at <b>{fmtTRY(BigInt(Math.round(anchorPrice * 100)))}</b> (USD/TRY oracle + 0.5% spread, KYC).
+            {(() => {
+              const best = (ads ?? []).filter((a) => tradeable(a) && tokenByAddress(a.token).symbol === "USDC").sort((x, y) => (x.price_kurus < y.price_kurus ? -1 : 1))[0];
+              if (!best) return <span className="text-muted"> No USDC maker yet: the first one to price under it wins the book.</span>;
+              const pct = ((anchorPrice * 100 - Number(best.price_kurus)) / (anchorPrice * 100)) * 100;
+              return <> Best peer price <b>{fmtTRY(best.price_kurus)}</b>, {pct >= 0 ? <span className="text-ok">{pct.toFixed(1)}% below the anchor</span> : <span className="text-warn">{(-pct).toFixed(1)}% above</span>}, no KYC.</>;
+            })()}
+          </p>
+          <Link href="/anchor" className="text-xs underline decoration-dotted">Makers: fund inventory or cash out via the anchor →</Link>
+        </section>
+      )}
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Buy</h2>
@@ -150,7 +169,10 @@ export default function Market() {
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-base font-semibold">{fmtTRY(a.price_kurus)}</p>
-                        <p className="text-xs text-muted">per {t.symbol}</p>
+                        <p className="text-xs text-muted">
+                          per {t.symbol}
+                          {anchorPrice !== null && t.symbol === "USDC" && (() => { const pct = ((anchorPrice * 100 - Number(a.price_kurus)) / (anchorPrice * 100)) * 100; return <span className={`ml-1 ${pct >= 0 ? "text-ok" : "text-warn"}`}>· {pct >= 0 ? `${pct.toFixed(1)}% below anchor` : `${(-pct).toFixed(1)}% above anchor`}</span>; })()}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <p className="font-medium">{fmtToken(a.remaining, a.decimals)} {t.symbol}</p>

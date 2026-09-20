@@ -30,6 +30,23 @@ export default function HowItWorks() {
         <Step n={7} title="What protects each side">Buyer: the declared reservation cannot be released for 2 hours, and if it is released anyway a valid proof within 3 days takes the maker&apos;s bond slice. Maker: a reservation that is never paid simply expires and the liquidity returns; nobody can take tokens without a valid bank proof for exactly that reservation, and a stolen e-mail is useless to anyone but the wallet it was paid for.</Step>
       </ol>
       <div className="rounded-2xl border border-line bg-panel p-5 text-sm">
+        <p className="font-semibold">Two rails to the same balance</p>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-muted"><tr><th className="py-1 pr-4"></th><th className="py-1 pr-4">Peer market (zkOTC)</th><th className="py-1">Licensed anchor (SEP-6)</th></tr></thead>
+            <tbody className="divide-y divide-line">
+              <tr><td className="py-1 pr-4 text-muted">Who uses it</td><td className="py-1 pr-4">buyers</td><td className="py-1">makers, to refill USDC inventory or cash out</td></tr>
+              <tr><td className="py-1 pr-4 text-muted">Identity</td><td className="py-1 pr-4">a wallet; no KYC</td><td className="py-1">KYC at the anchor (SEP-12)</td></tr>
+              <tr><td className="py-1 pr-4 text-muted">Custody</td><td className="py-1 pr-4">none: escrow contract, released by a proof</td><td className="py-1">the anchor holds the bank leg</td></tr>
+              <tr><td className="py-1 pr-4 text-muted">Evidence</td><td className="py-1 pr-4">the bank&apos;s DKIM-signed receipt, verified in zero knowledge</td><td className="py-1">the anchor&apos;s own bank sees the transfer</td></tr>
+              <tr><td className="py-1 pr-4 text-muted">Price</td><td className="py-1 pr-4">set by makers, competing with the anchor&apos;s rate</td><td className="py-1">USD/TRY oracle + spread (SEP-38)</td></tr>
+              <tr><td className="py-1 pr-4 text-muted">Direction</td><td className="py-1 pr-4">TRY → XLM/USDC</td><td className="py-1">both ways</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-muted">The anchor integration is the standard SEP client path (SEP-1 discovery, SEP-10 login, SEP-6, SEP-38), so a real Turkish anchor is a home-domain change.</p>
+      </div>
+      <div className="rounded-2xl border border-line bg-panel p-5 text-sm">
         <p className="font-semibold">Contracts on testnet</p>
         <ul className="mt-2 space-y-1 text-muted">
           <li>Escrow: {config.escrowId ? <a className="mono underline decoration-dotted" href={contractUrl(config.escrowId)} target="_blank" rel="noreferrer">{config.escrowId}</a> : "not configured"}</li>

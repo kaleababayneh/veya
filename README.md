@@ -19,6 +19,7 @@ market page to see a real proof. Built for the Stellar Pro Hackathon, Istanbul, 
 | On-chain | 260-byte Groth16 seal + 184-byte journal, verified by the RISC Zero verifier router (Nethermind) in one settlement transaction |
 | First real trade | 12 Sep 2026: ₺50 FAST with reference `ZKOTC 7 089340`, proof 12.8 s, settled on testnet (reservation #7) |
 | Trust today | funds are safe from other users and the counterparty; the single operator can read makers' IBANs and change the accepted zkVM program — stated on the site, timelock + enclave on the roadmap |
+| Two rails | buyers use the peer market (no KYC, proof of receipt); makers refill USDC inventory and cash out through a Turkish anchor via the standard SEP client path (SEP-1 discovery, SEP-10 login, SEP-6 deposit/withdraw, SEP-38 quotes; `tr-mock-anchor.fly.dev` on testnet) — the anchor's rate is shown on the market as the price to beat |
 
 ```
 maker  ──create_ad(liquidity, price, limits, sealed IBAN)──▶ ┌──────────────────┐
@@ -35,7 +36,7 @@ buyer  ──settle(journal, seal) ───────────────
 | `contracts/escrow` | Market escrow v5: ads, reservations, quotes, `declare_paid` protection, per-reservation bond slices, wallet-bound reference, nullifiers, admin/upgrade; calls the RISC Zero router | 21 |
 | `zkotc-lib` | zkVM-agnostic core: DKIM verifier (RFC 6376), MIME/attachment extraction, bank providers chosen by DKIM domain — Ziraat e-dekont HTML parser, VakıfBank Dekont.pdf extractor + parser — hardened against description injection, 184-byte journal | 16 unit + 10 on real e-mails |
 | `prover` | RISC Zero guest (`prover/IMAGE_ID`), `zkotc` CLI, `zkotc-server` (jobs API, GPU Groth16 via ICICLE or the reference CPU prover) | |
-| `web` | Next.js 16: market, ads, reservation wizard, `/api/reveal` (sealed IBAN → reserving wallet), `/api/prove` (gate to the prover) | lint + types + build in CI |
+| `web` | Next.js 16: market (with the anchor's price to beat), ads, reservation wizard, `/api/reveal` (sealed IBAN → reserving wallet), `/api/prove` (gate to the prover), `/anchor` (SEP-1/10/6/38 client for makers), SEP-1 `stellar.toml` | lint + types + build in CI |
 | `scripts/gpu` | Rent-and-deploy runbook for the GPU prover (artifacts on an Azure host, HTTPS via Caddy, escrow switch) | |
 | `docs` | `ROADMAP.md` (status + plan), `GPU.md`, `OPERATIONS.md`, PRD, demo script, QA checklist | |
 
