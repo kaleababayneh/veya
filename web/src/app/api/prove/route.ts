@@ -17,6 +17,7 @@ import { Client, ReservationStatus } from "@/contracts/escrow";
 import { config } from "@/lib/config";
 import { istanbulYmd } from "@/lib/format";
 import { signatureOk, fresh } from "@/lib/server/auth";
+import { proverUrl as proverBase } from "@/lib/server/prover";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,7 +34,7 @@ function unwrap<T>(r: { isOk(): boolean; unwrap(): T; unwrapErr(): { message?: s
 }
 
 export async function POST(req: Request) {
-  const proverUrl = (process.env.PROVER_URL ?? process.env.NEXT_PUBLIC_PROVER_URL ?? "").replace(/\/$/, "");
+  const proverUrl = proverBase();
   const token = process.env.PROVER_TOKEN ?? "";
   const secretHex = process.env.REVEAL_SECRET_KEY;
   if (!proverUrl || !secretHex) return bad(503, "proving is not configured on this deployment (PROVER_URL / REVEAL_SECRET_KEY)");

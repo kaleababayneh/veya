@@ -1,5 +1,8 @@
 # Operations — prover host
 
+> **2026-09-19: this Azure VM no longer exists.** Proving runs on rented GPU boxes; artifacts live on the deploying machine and HTTPS comes from a tunnel on the box. The current runbook is [`GPU.md`](GPU.md). What follows is kept for history.
+
+
 | item | value |
 |---|---|
 | Host | Azure VM `kaleab5`, Ubuntu 24.04, 4 vCPU x86_64 (Xeon 8171M), 15 GB RAM, 2 TB disk, no GPU |

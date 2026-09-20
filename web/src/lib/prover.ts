@@ -1,5 +1,3 @@
-import { config } from "./config";
-
 export type JobStatus = "queued" | "executing" | "proving" | "done" | "failed";
 
 export type ProverJob = {
@@ -45,7 +43,8 @@ async function j<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export const proverInfo = () => fetch(`${config.proverUrl}/info`).then((r) => j<ProverInfo>(r));
+/* The prover sits behind this app's own API: its address changes with every GPU rental and stays server-side. */
+export const proverInfo = () => fetch("/api/prove/info").then((r) => j<ProverInfo>(r));
 
 /**
  * Start a proving job through this app's `/api/prove` gate: the wallet signs a short message (no transaction),
@@ -68,7 +67,7 @@ export async function requestProof(args: {
   return j<ProverJob>(res);
 }
 
-export const getJob = (id: string) => fetch(`${config.proverUrl}/jobs/${id}`).then((r) => j<ProverJob>(r));
+export const getJob = (id: string) => fetch(`/api/prove/jobs/${encodeURIComponent(id)}`).then((r) => j<ProverJob>(r));
 
 export const fileToBase64 = (f: File) =>
   new Promise<string>((resolve, reject) => {

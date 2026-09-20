@@ -11,10 +11,10 @@
 #
 # Inputs (put in place by deploy.sh):
 #   ~/gpu-artifacts/icicle/      ICICLE-snark GPU Groth16 worker + libs (ENGINE=icicle, default)
-#   ~/gpu-artifacts/zkey/        stark_verify_final.zkey + stark_verify_graph.bin (risc0 groth16 component)
+#   ~/gpu-artifacts/zkey/        stark_verify_final.zkey + stark_verify_graph.bin (risc0 groth16 component; fetched here with rzup when not staged)
 #   ~/gpu-artifacts/g16/         reference CPU Groth16 prover files (ENGINE=native fallback)
 #   ~/gpu-artifacts/bin/latest/  prebuilt zkotc + zkotc-server (+ SHA256SUMS, BUILD.txt)
-#   ~/zkotc/gpu.env              ENGINE, PORT, PROVER_TOKEN, CORS_ORIGIN, DKIM_DNS, MAX_JOBS_QUEUED
+#   ~/zkotc/gpu.env              ENGINE, PORT, PROVER_TOKEN, CORS_ORIGIN, DKIM_DNS, MAX_JOBS_QUEUED, TUNNEL, PROVER_THREADS
 # Outputs: ~/zkotc/bin/{zkotc,zkotc-server}, ~/zkotc/server.log, ~/zkotc/bootstrap.log, ~/zkotc/bootstrap.status (OK|FAIL)
 #
 # Lessons baked in (see docs/GPU.md): never use the CUDA Groth16 wrap of risc0 3.0.x (it crashes: GROTH16_NATIVE_DIR
@@ -58,6 +58,16 @@ if [ "$ENGINE" = icicle ]; then
   step "Groth16 engine: icicle (GPU) — ICICLE-snark worker + risc0 zkey/graph"
   [ -f "$A/icicle/SHA256SUMS" ] || { echo "missing $A/icicle (build it once with scripts/gpu/build-icicle.sh, then --publish)"; exit 1; }
   (cd "$A/icicle" && sha256sum -c --quiet SHA256SUMS) && echo "icicle checksums OK"
+  # the zkey + witness graph are public (risc0's groth16 component, 5 GB): a box with a datacenter link fetches them
+  # itself in a few minutes, which beats uploading 3.9 GB from a laptop; an artifact host may still pre-stage them
+  if [ ! -f "$A/zkey/stark_verify_final.zkey" ] || [ ! -f "$A/zkey/stark_verify_graph.bin" ]; then
+    echo "zkey not staged — downloading risc0-groth16 with rzup (5 GB)"
+    export PATH=$HOME/.risc0/bin:$PATH
+    [ -x "$HOME/.risc0/bin/rzup" ] || curl -sL https://risczero.com/install | bash >/dev/null 2>&1
+    EXT=$HOME/.risc0/extensions/v0.1.0-risc0-groth16
+    [ -f "$EXT/stark_verify_final.zkey" ] || rzup install risc0-groth16 >/dev/null 2>&1
+    mkdir -p "$A/zkey" && cp "$EXT/stark_verify_final.zkey" "$EXT/stark_verify_graph.bin" "$A/zkey/"
+  fi
   for f in stark_verify_final.zkey stark_verify_graph.bin; do [ -f "$A/zkey/$f" ] || { echo "missing $A/zkey/$f"; exit 1; }; done
   chmod +x "$A/icicle/icicle-snark"
   pkill -x icicle-snark 2>/dev/null || true
@@ -69,7 +79,13 @@ else
   ln -sfn "$A/g16" "$HOME/g16"
 fi
 
-pkill -x zkotc-server 2>/dev/null && sleep 1 || true   # a running server holds the binary ("Text file busy")
+# a running server holds the binary ("Text file busy") and the port; tearing down its CUDA context can take several
+# seconds, and a new server started before that fails with "Address already in use"
+if pkill -x zkotc-server 2>/dev/null; then
+  for _ in $(seq 1 30); do pgrep -x zkotc-server >/dev/null || break; sleep 1; done
+  pgrep -x zkotc-server >/dev/null && { pkill -9 -x zkotc-server || true; sleep 1; }
+fi
+pkill -x icicle-snark 2>/dev/null || true   # its parent is gone; the next server starts its own worker
 install_bin() { for b in zkotc zkotc-server; do install -m 755 "$1/$b" "$Z/bin/$b.new" && mv -f "$Z/bin/$b.new" "$Z/bin/$b"; done; }
 
 if [ "$BUILD" = 1 ]; then
@@ -104,7 +120,32 @@ if [ "$SERVE" = 1 ]; then
   set -a; . "$Z/gpu.env"; set +a
   export PORT=${PORT:-10100} SUCCINCT_CACHE_DIR=$Z/cache RUST_LOG=${RUST_LOG:-info}
   if [ "$ENGINE" = icicle ]; then export GROTH16_ICICLE_DIR=$A/icicle GROTH16_ZKEY_DIR=$A/zkey; else export GROTH16_NATIVE_DIR=$HOME/g16; fi
-  nohup "$Z/bin/zkotc-server" > "$Z/server.log" 2>&1 &
+  # Threads: the prover starts one per visible CPU. On a big shared host (seen: 2 × EPYC, 256 CPUs, container quota
+  # ~31) that starved the GPU: 13 s for the first proof, then 60–120 s with the GPU idle between short bursts. A small
+  # pool pinned to cores on the GPU's own NUMA node gives a steady 11 s. PROVER_THREADS in gpu.env overrides (default 16).
+  THREADS=${PROVER_THREADS:-16}; [ "$THREADS" -gt "$(nproc)" ] && THREADS=$(nproc)
+  bdf=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader 2>/dev/null | head -1 | tr 'A-Z' 'a-z' | sed 's/^0000//')
+  node=$(cat "/sys/bus/pci/devices/$bdf/numa_node" 2>/dev/null || echo -1); [ "$node" -ge 0 ] 2>/dev/null || node=0
+  cpus=$(python3 - "$node" "$THREADS" <<'PY' 2>/dev/null || true
+import sys
+node, n = sys.argv[1], int(sys.argv[2])
+try: spec = open(f"/sys/devices/system/node/node{node}/cpulist").read().strip()
+except OSError: spec = ""
+out = []
+for part in filter(None, spec.split(",")):
+    a, _, b = part.partition("-")
+    out += range(int(a), int(b or a) + 1)
+print(",".join(map(str, out[:n])))
+PY
+)
+  export RAYON_NUM_THREADS=$THREADS
+  if [ -n "$cpus" ] && taskset -c "$cpus" true 2>/dev/null; then
+    echo "prover threads: $THREADS, pinned to CPUs $cpus (NUMA node $node, the GPU's)"
+    nohup taskset -c "$cpus" "$Z/bin/zkotc-server" > "$Z/server.log" 2>&1 &
+  else
+    echo "prover threads: $THREADS (no CPU pinning: NUMA layout not readable)"
+    nohup "$Z/bin/zkotc-server" > "$Z/server.log" 2>&1 &
+  fi
   for _ in $(seq 1 30); do curl -sf "localhost:$PORT/info" >/dev/null 2>&1 && break; sleep 1; done
   curl -sf "localhost:$PORT/info" || { echo "server did not come up:"; tail -20 "$Z/server.log"; exit 1; }
   echo
@@ -113,6 +154,25 @@ if [ "$SERVE" = 1 ]; then
     echo "PUBLIC_URL=http://$PUBLIC_IPADDR:${!pub}"
   else
     echo "PUBLIC_URL=? (no Vast port mapping for $PORT; use ssh -L $PORT:localhost:$PORT)"
+  fi
+  # HTTPS without a server of our own: a Cloudflare quick tunnel (random https://….trycloudflare.com → this port).
+  # The URL lives as long as this cloudflared process; a restart gives a new one (deploy.sh reads it from this log).
+  if [ "${TUNNEL:-0}" = 1 ]; then
+    step "https tunnel (cloudflared quick tunnel)"
+    command -v cloudflared >/dev/null || { curl -sL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x /usr/local/bin/cloudflared; }
+    # a tunnel that is already up keeps its URL: it points at the port, not at the server process, so a re-deploy
+    # (which restarts the server) must not hand the web app a new address
+    turl=$(grep -saoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$Z/tunnel.log" | head -1 || true)   # -a: the log can hold control bytes
+    if pgrep -x cloudflared >/dev/null && [ -n "$turl" ] && curl -sf --max-time 15 "$turl/info" >/dev/null; then
+      echo "keeping the running tunnel"
+    else
+      pkill -x cloudflared 2>/dev/null || true
+      : > "$Z/tunnel.log"
+      nohup cloudflared tunnel --no-autoupdate --url "http://localhost:$PORT" > "$Z/tunnel.log" 2>&1 &
+      turl=""
+    fi
+    for _ in $(seq 1 40); do [ -n "$turl" ] && break; turl=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$Z/tunnel.log" | head -1 || true); [ -n "$turl" ] && break; sleep 1; done
+    if [ -n "$turl" ]; then echo "TUNNEL_URL=$turl"; else echo "TUNNEL_URL=? (cloudflared gave no URL in 40 s; see $Z/tunnel.log)"; fi
   fi
 fi
 

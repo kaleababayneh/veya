@@ -130,7 +130,7 @@ RISC Zero's Groth16 (STARK→SNARK) wrapper is **x86-only** (not Apple Silicon, 
 On a Mac you can `execute` (exact journal, any machine) and, with `RISC0_DEV_MODE=1`, produce fake receipts for UI development — the router rejects them on-chain by design. Receipts must come from risc0 **3.0.x** (control root `a54dc85a…`), which is what the deployed verifier pins; a new RISC Zero major needs a new verifier version behind the router.
 
 ## Prover deployment
-A real prover runs on an x86 Azure VM behind Caddy/TLS at `https://4-239-243-216.sslip.io` — see `docs/OPERATIONS.md` for deploy/update/rotate procedures.
+A real prover runs on a rented GPU box (RTX 4090, ~15 s per proof) behind an HTTPS tunnel; the web app reaches it only through its own `/api/prove` routes. `docs/GPU.md` is the runbook: prebuilt binaries are kept on the deploying machine, the box fetches the public zkey itself.
 
 ## Prover API
 `GET /info` → `{image_id, prover_mode, dkim_source}` · `POST /jobs {eml_base64, offer_id, recipient_iban, min_amount_kurus, since_yyyymmdd}` → job (fails fast with the exact DKIM/statement error) · `GET /jobs/{id}` → `queued | executing | proving | done | failed` with `proof`, `public_values`.

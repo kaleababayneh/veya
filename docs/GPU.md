@@ -5,27 +5,47 @@ rented machine, without repeating the detours of the first attempt (which took a
 RTX 4090: a real e-dekont proves in **15 s** through the API (STARK 4.8 s, witness 2–4 s, Groth16 2.3 s on the
 GPU with the ICICLE-snark worker), versus 84 minutes on the 4-vCPU Azure VM.
 
-Two moving parts:
+**2026-09-19: the Azure VM that used to be the artifact host and the HTTPS proxy is gone.** The artifact store now
+lives on the machine you deploy from, and HTTPS comes from a tunnel on the box itself. Nothing else is needed.
+
+**Later the same day: a Hetzner server took over as artifact host** (`ARTIFACT_HOST=validator@138.201.80.51`,
+`ARTIFACT_SSH_OPTS="-i ~/.ssh/hetzner-kaleab"`, store in `~/gpu-artifacts` there: binaries, ICICLE worker *and* the 3.9 GB
+zkey). It pushes to a new box datacenter-to-datacenter, so a rental needs neither the laptop upload nor the 5 GB rzup
+download. The copy in `~/gpu-artifacts` on the Mac stays as a backup (`ARTIFACT_HOST=local`). That server is a live
+validator and `validator` has no passwordless sudo: it is a file store only. HTTPS still comes from the tunnel on the
+box; a fixed `https://138-201-80-51.sslip.io/gpu` proxy would need Caddy installed and ports 80/443 opened there by its owner.
+
+Three moving parts:
 
 | where | what | why |
 |---|---|---|
-| **artifact host** = our Azure VM (`kaleab@4.239.243.216`, `~/gpu-artifacts/`) | `bin/latest/` prebuilt `zkotc` + `zkotc-server`; `icicle/` the ICICLE-snark GPU Groth16 worker (12 MB, built once by `scripts/gpu/build-icicle.sh`); `zkey/` the risc0 `stark_verify` zkey + witness graph (3.9 GB); `g16/` the reference CPU prover files (2.5 GB, fallback engine) | a fresh box downloads ~4 GB in ~3 min instead of compiling for 30 |
-| **GPU box** = any rented CUDA container/VM, Ubuntu 24.04 | `scripts/gpu/bootstrap.sh` verifies checksums and starts `zkotc-server` | ephemeral; nothing on it needs saving |
+| **artifact store** = this machine, `~/gpu-artifacts/` (`ARTIFACT_HOST=local`) | `bin/<git>-<img8>/` + `bin/latest` prebuilt `zkotc` + `zkotc-server`; `icicle/` the ICICLE-snark GPU Groth16 worker (built once by `scripts/gpu/build-icicle.sh`). About 100 MB. | The binaries are the one thing that cannot be recreated: every build has its own image id and the escrow accepts exactly one. **Back this folder up.** The 3.9 GB zkey is *not* stored: it is public, and the box downloads it from RISC Zero itself (`rzup install risc0-groth16`), faster than a laptop could upload it. |
+| **GPU box** = any rented CUDA container/VM, Ubuntu 24.04 | `scripts/gpu/bootstrap.sh` verifies checksums, fetches the zkey, starts `zkotc-server` and a Cloudflare quick tunnel | ephemeral; nothing on it needs saving |
+| **web app** | the browser only calls the app's own `/api/prove`, `/api/prove/info`, `/api/prove/jobs/<id>`; the server side forwards to `PROVER_URL` | the box's address changes with every rental and never reaches the browser; no CORS, no mixed content |
 
 `scripts/gpu/deploy.sh` (run on your Mac) ties them together. One-time: copy `scripts/gpu/.env.example` to
-`scripts/gpu/.env` and fill in `PROVER_TOKEN` (same value as `NEXT_PUBLIC_PROVER_TOKEN` in `web/.env.local`).
+`scripts/gpu/.env` and fill in `PROVER_TOKEN` (same value as `PROVER_TOKEN` in `web/.env.local` and on Vercel).
 
 ## 0. The whole thing, next time
 
 ```sh
 # 1. rent a 4090 on Vast (§1), copy its "Direct SSH" line, then from the repo root:
 scripts/gpu/deploy.sh "ssh -p <port> root@<ip> -L 8080:localhost:8080" --test zkotc-lib/testdata/private/<some>.eml
-# 2. that is all: prebuilt binaries (same image id as the escrow), HTTPS proxy re-pointed, web/.env.local updated,
-#    Vercel untouched (it talks to PROXY_URL, which never changes). ~4 min. Destroy the instance when done.
+# 2. local app: nothing to do, PROVER_URL in web/.env.local now points at the box's https tunnel.
+# 3. live site: the same command with --vercel sets PROVER_URL on Vercel and redeploys (the tunnel URL is new
+#    with every rental, and Vercel only reads env changes on a new deployment).
 ```
-No `--switch` is needed as long as `bin/latest` on the artifact host is the build the escrow is configured for
-(`BUILD.txt` there names the image id; `deploy.sh` checks it against the escrow and says so). Nothing on a box
-needs saving before destroying it.
+~5 min: binaries up from this machine, zkey down from RISC Zero (the slow part, ~3 min), checksums, server, tunnel.
+No `--switch` is needed as long as `~/gpu-artifacts/bin/latest` is the build the escrow is configured for
+(`BUILD.txt` there names the image id; `deploy.sh` checks it against the escrow and says so).
+
+If `~/gpu-artifacts` is ever lost: `--build --publish --switch` on any box (~30 min) makes a new build, saves it here
+and re-points the escrow at its image id.
+
+The quick tunnel (`https://<random>.trycloudflare.com`) lives as long as the `cloudflared` process on the box. If the
+container restarts, `bootstrap.sh` starts a new tunnel with a **new URL** (`grep TUNNEL_URL ~/zkotc/bootstrap.log`):
+run `deploy.sh … --vercel` again. A stable hostname needs a named Cloudflare tunnel on a domain whose DNS is on
+Cloudflare; not set up.
 
 ## 1. Rent (Vast.ai, ~2 min)
 
@@ -146,6 +166,9 @@ Cost: 4090 at $0.36/h ≈ $0.003 per proof; the afternoon that produced this run
 | Waited 28 min for the compile on every box | Prebuilt binaries on the artifact host (`--build --publish` once per code change) |
 | Appended a key to `~/.ssh/authorized_keys` and got `Permission denied` for it | The file has no trailing newline; `deploy.sh` writes `\n<key>\n` and de-blanks |
 | Proof finished but the ssh session hung 10 min, hiding the timings | Long jobs run under `nohup` with logs; the scripts poll files instead of holding pipes |
+| First proof after a start 13 s, every later one 60–120 s, GPU idle between short bursts (2026-09-19: 2 × EPYC 9554 host, 256 CPUs visible, container quota ~31) | The prover starts one thread per visible CPU; on a big shared two-socket host they starve the thread that feeds the GPU. `bootstrap.sh` now runs the server with `PROVER_THREADS` (default 16) pinned with `taskset` to cores on the GPU's own NUMA node: a steady 11 s. Not the cause, checked: PCIe link (Gen4 x16 under load), cgroup throttling (none), GPU clocks, memory. |
+| Restart failed with `Address already in use` | The old server needs several seconds to tear down its CUDA context; `bootstrap.sh` now waits for it to exit before starting the new one |
+| `--publish` to a Mac died with an rsync usage error | The rsync shipped with macOS (openrsync 2.6.9) refuses `--partial` together with `--inplace` or with two remote sources; `deploy.sh` pulls one file per call and retries |
 | Instance stuck in "Loading" for 14 min (host DNS broken) | Destroy after 5 min and rent another host; check the status text on the card |
 | `zsh: == not found` in an ad-hoc command | `=cmd` is a zsh expansion; quote it or use bash |
 | Set `NVCC_APPEND_FLAGS` for a rebuild and cargo recompiled every CUDA kernel (25 min) | Never change nvcc flags between builds; `bootstrap.sh --build` unsets them |
